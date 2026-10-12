@@ -158,6 +158,8 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/dailybonus/config", Description: "Toggle the scheduled Global daily-reward run (body: {enabled: true/false})."},
 			{Method: http.MethodGet, Path: base + "/usage", Description: "Per-request CodeBuddy usage log (credit/tokens). Query: auth_index, limit (default 100), from, to."},
 			{Method: http.MethodGet, Path: base + "/usage/summary", Description: "Per-account usage summary (last/today/all credit + requests)."},
+			{Method: http.MethodGet, Path: base + "/models/config", Description: "Model Manager catalog: static + upstream (UA WorkBuddy) models per realm with the effective settings (layering default → realm → account). Query: realm, fetch_account, reset=1."},
+			{Method: http.MethodPost, Path: base + "/models/config", Description: "Save Model Manager settings (body: {realm, scope:all|acct, auth, state{...}, remove})."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: pluginMenuName, Description: pluginPanelBrand + " dashboard: credits, check-in, plan, import."},
@@ -182,7 +184,7 @@ func handleManagement(raw []byte) ([]byte, error) {
 	// Plugin-layer auth + rate limit for mutating endpoints (v0.6.31).
 	// Only enforced when management_key is configured; otherwise host middleware
 	// is the sole guard (historical default).
-	if req.Method == http.MethodPost || mutatingManagementPath(path) {
+	if req.Method == http.MethodPost || mutatingManagementPath(path) || modelsConfigResetRequest(req) {
 		ip := managementClientIP(req)
 		if !allowManagementRequest(ip) {
 			return okEnvelope(mgmtJSONResponse(http.StatusTooManyRequests, map[string]any{
@@ -226,6 +228,10 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUsageQuery(req)))
 	case req.Method == http.MethodGet && path == base+"/usage/summary":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUsageSummary(req)))
+	case req.Method == http.MethodGet && path == base+"/models/config":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigGet(req)))
+	case req.Method == http.MethodPost && path == base+"/models/config":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigPost(req)))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }
