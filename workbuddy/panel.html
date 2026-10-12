@@ -153,6 +153,116 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);border-radius:0 0 var(--radius-lg) var(--radius-lg)}
 .modal-ft button.sec{background:var(--btn-sec);color:var(--fg)}
 .modal-ft button.sec:hover{background:var(--btn-sec-hover)}
+/* ===== ⚙ Model Manager (Global / CN) — dari mockups/model-settings-mockup.html ===== */
+.newbtn{position:relative}
+.newbtn .pill{position:absolute;top:-7px;right:-10px;background:var(--err);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:1px 5px;letter-spacing:.4px}
+.newbtn.on .pill{display:none}
+.mmod{position:fixed;inset:0;background:var(--scrim);display:none;align-items:flex-start;justify-content:center;z-index:9100;padding:32px 16px;backdrop-filter:blur(2px)}
+.mmod.open{display:flex}
+.mmodal{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius-lg);width:860px;max-width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--modal-shadow)}
+.mm-hd{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 0}
+.mm-hd h2{font-size:17px;margin:0;display:flex;align-items:center;gap:8px}
+.mm-tabs{display:flex;gap:4px;padding:12px 20px 0;border-bottom:1px solid var(--border)}
+.mm-tabs .tab{background:none;border:none;color:var(--mut);padding:8px 14px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
+.mm-tabs .tab.active{color:var(--fg);border-bottom-color:var(--ok)}
+.mm-body{padding:16px 20px;overflow-y:auto}
+.mm-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
+.mm-foot .left,.mm-foot .right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mm-hint{color:var(--mut);font-size:12px}
+.fetchline{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--mut);margin-bottom:12px;flex-wrap:wrap}
+.fetchline b{color:var(--fg);font-weight:600}
+.fetchline code{background:var(--code-bg);color:var(--code-fg);padding:1px 5px;border-radius:4px;font-size:11px}
+.fetchline select{background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:12px}
+.searchrow{display:flex;gap:10px;margin-bottom:10px}
+.searchrow input{flex:1;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:8px 12px;font-size:13px;outline:none;min-width:0}
+.searchrow input:focus{border-color:var(--acc)}
+.searchrow .counter{color:var(--mut);font-size:12.5px;align-self:center;white-space:nowrap}
+.mheadrow{display:grid;grid-template-columns:34px 1.7fr 1.3fr 90px 76px 86px;gap:8px;padding:6px 12px;font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;background:var(--surface)}
+.mlist{border:1px solid var(--border);border-radius:10px;max-height:46vh;overflow-y:auto}
+.mrow{display:grid;grid-template-columns:34px 1.7fr 1.3fr 90px 76px 86px;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--card)}
+.mrow:last-child{border-bottom:none}
+.mrow.off{opacity:.5}
+.mrow:hover{background:var(--surface)}
+.mrow .id{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;word-break:break-all}
+.mrow .nm{color:var(--mut);font-size:12.5px}
+.mrow .ctx{color:var(--mut);font-size:12px;text-align:right;white-space:nowrap;cursor:help}
+.mrow .est{color:var(--mut);font-size:12px;font-family:ui-monospace,monospace;cursor:help}
+.mlist .badge{font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;border:1px solid transparent;background:var(--mut-soft);color:var(--mut)}
+.mlist .badge.hidden{background:rgba(255,143,210,.14);color:#ff8fd2}
+.mlist .badge.custom{background:var(--warn-soft);color:var(--warn)}
+.mlist .badge.stale{background:var(--mut-soft);color:var(--mut)}
+.mlist .badge.cr{background:var(--ok-soft);color:var(--ok);font-family:ui-monospace,monospace;font-size:10.5px}
+.mlist .badge.cr0{background:var(--ok-soft);color:var(--ok);font-weight:700}
+.mlist .badge.tier{background:var(--acc-ring);color:var(--acc)}
+.mlist .badge.warnb{background:var(--warn-soft);color:var(--warn)}
+.mlist .badge.errb{background:var(--err-soft);color:var(--err)}
+.ghead{display:flex;justify-content:space-between;gap:8px;padding:7px 12px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;background:var(--surface);color:var(--mut);border-bottom:1px solid var(--border);position:sticky;top:0}
+.famhead{padding:5px 12px;font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mut);background:transparent;border-bottom:1px solid var(--border)}
+.mlist input[type=checkbox]{width:16px;height:16px;accent-color:var(--ok);cursor:pointer}
+.testbtn{background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--mut);font-size:11.5px;padding:5px 0;cursor:pointer;width:100%;font-family:inherit}
+.testbtn:hover{color:var(--fg);border-color:var(--mut-border)}
+.testbtn.ok{color:var(--ok);border-color:var(--ok-border)}
+.testbtn.err{color:var(--err);border-color:var(--err-border)}
+.addrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.addrow input{background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:8px 12px;font-size:13px;min-width:0}
+.addrow input:focus{border-color:var(--acc)}
+.addrow .fid{flex:1.4}.addrow .fnm{flex:1}.addrow .fctx{width:90px}
+.pcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.pcard h3{font-size:14px;margin:0 0 4px}
+.pcard .desc{color:var(--mut);font-size:12.5px;margin-bottom:12px}
+.ptoggle{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.ptoggle label{font-size:13.5px;cursor:pointer}
+.switch{position:relative;width:40px;height:22px;background:var(--mut-soft);border:1px solid var(--mut-border);border-radius:22px;cursor:pointer;transition:.2s;flex:none}
+.switch.on{background:var(--ok);border-color:var(--ok)}
+.switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s}
+.switch.on .knob{left:20px}
+.pinput{display:flex;gap:10px;align-items:center;margin-left:auto}
+.pinput input{background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:8px 12px;font-size:13px;width:180px;font-family:ui-monospace,monospace}
+.pinput input:focus{border-color:var(--acc)}
+.pinput .def{color:var(--mut);font-size:12.5px}
+.pinput .def code{background:var(--code-bg);color:var(--code-fg);padding:1px 5px;border-radius:4px;font-size:11px}
+.preview{background:var(--surface-muted);border:1px dashed var(--mut-border);border-radius:8px;padding:10px 14px;font-family:ui-monospace,monospace;font-size:12.5px;color:var(--mut);margin-top:12px}
+.preview b{color:var(--ok);font-weight:600}
+.mm-warn{background:var(--err-soft);border:1px solid var(--err-border);color:var(--err);border-radius:8px;padding:10px 14px;font-size:12.5px;margin-top:12px;display:none}
+.mm-warn.show{display:block}
+.mm-warn code{background:var(--code-bg);color:var(--code-fg);padding:1px 5px;border-radius:4px}
+.adv{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:760px){.adv{grid-template-columns:1fr}}
+.acard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px}
+.acard h3{font-size:13.5px;margin:0 0 3px}
+.acard .desc{color:var(--mut);font-size:12px;margin-bottom:10px}
+.acard select{width:100%;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--fg);padding:8px 10px;font-size:13px}
+.acard select:disabled{opacity:.5}
+.acard code{background:var(--code-bg);color:var(--code-fg);padding:1px 5px;border-radius:4px;font-size:11px}
+.mm-note{grid-column:1/-1;background:var(--ok-soft);border:1px solid var(--ok-border);color:var(--fg);border-radius:8px;padding:10px 14px;font-size:12.5px}
+.mmod pre.yaml{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;font-family:ui-monospace,monospace;color:var(--code-fg);overflow-x:auto;margin-top:10px;display:none;white-space:pre}
+.mm-save-all{background:var(--ok);border:1px solid var(--ok);color:var(--on-acc)}
+.mm-save-all:hover{filter:brightness(1.08)}
+/* ===== Update checker — fixed pojok kiri atas ===== */
+.uwidget{position:fixed;top:14px;left:14px;z-index:9500}
+.ubtn{position:relative;white-space:nowrap}
+.udot{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;background:var(--err);color:#fff;font-size:11px;font-weight:800;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:upulse 1.8s infinite}
+@keyframes upulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+.upop{position:absolute;top:44px;left:0;width:340px;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--modal-shadow);display:none;z-index:60;overflow:hidden}
+.upop.open{display:block}
+.uhead{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.uhead .t{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.uhead .cur{font-size:15px;font-weight:700}
+.ubody{padding:14px 16px}
+.upbox{background:var(--warn-soft);border:1px solid var(--warn-border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.upbox .t{color:var(--warn);font-weight:600;font-size:13.5px}
+.upbox .n{color:var(--mut);font-size:12.5px;margin-top:4px}
+.upbox .hl{color:var(--warn);font-weight:600}
+.btn-update{width:100%;background:var(--ok);border:none;color:#fff;border-radius:8px;padding:9px;font-size:13.5px;font-weight:600;cursor:pointer;margin-bottom:10px;font-family:inherit}
+.btn-update:hover{filter:brightness(1.08)}
+.unotes{font-size:12px;color:var(--mut)}
+.unotes b{color:var(--fg)}
+.unotes li{margin:4px 0 4px 16px}
+.uwidget .vrow{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--border);font-size:12.5px}
+.uwidget .vrow .k{color:var(--mut)}
+.uwidget .vrow a{color:var(--acc);text-decoration:none}
+.checkline{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mut);margin-top:10px}
+.checkline a{color:var(--acc);text-decoration:none}
 </style>
 <script>
 /* Early theme sync (before body paint): mirror CPA parent data-theme when
@@ -200,6 +310,27 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 </script>
 </head>
 <body>
+<!-- Update checker: fixed kiri atas, muncul hanya jika registry.version > build.version (dirender oleh JS dari /update/check) -->
+<div class="uwidget" id="uwidget" style="display:none">
+  <button type="button" class="ubtn" id="ubtn"><span id="ulabel">⬇</span><span class="udot" id="udot">1</span></button>
+  <div class="upop" id="upop">
+    <div class="uhead">
+      <div><div class="t" data-i18n="当前版本">当前版本</div><div class="cur" id="ucur">—</div></div>
+      <button type="button" class="sec" style="padding:4px 8px;font-size:12px" id="urecheck">↻</button>
+    </div>
+    <div class="ubody">
+      <div class="upbox">
+        <div class="t" data-i18n="🡇 有新版本可用！">🡇 有新版本可用！</div>
+        <div class="n"><span data-i18n="最新版">最新版</span>: <span class="hl" id="ulatest">—</span> · <span id="ureltime"></span></div>
+      </div>
+      <button type="button" class="btn-update" id="ugithub" data-i18n="⬇ 通过 GitHub 更新">⬇ 通过 GitHub 更新</button>
+      <div class="unotes"><b id="uwn">What's new:</b><ul id="uchangelog"></ul></div>
+      <div class="vrow"><span class="k" data-i18n="发布说明">发布说明</span><a href="#" id="urelease">View on GitHub ↗</a></div>
+      <div class="vrow"><span class="k" data-i18n="校验和">校验和</span><span id="uchk" style="font-family:monospace;font-size:11px">—</span></div>
+      <div class="checkline"><span id="ulastcheck"></span><a href="#" id="uskip" data-i18n="跳过此版本">跳过此版本</a></div>
+    </div>
+  </div>
+</div>
 <div class="wrap">
   <div class="panel-heading"><h1><span data-i18n="CodeBuddy 账号管理">CodeBuddy 账号管理</span></h1><label class="language-control"><span data-i18n="界面语言">界面语言</span><select id="panelLanguage" aria-label="界面语言" data-i18n-aria-label="界面语言"><option value="zh-CN">中文</option><option value="en">English</option></select></label></div>
   <div class="sub"><span data-i18n="积分余额 · 国内账号每日签到（09:00/21:00）· 国际账号每日奖励 · 国际账号专家体验包限领一次 · 积分耗尽后自动禁用/删除">积分余额 · 国内账号每日签到（09:00/21:00）· 国际账号每日奖励 · 国际账号专家体验包限领一次 · 积分耗尽后自动禁用/删除</span></div>
@@ -218,6 +349,9 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <label class="toggle" title="仅限国内账号，每日 09:00 / 21:00 自动签到" data-i18n-title="仅限国内账号，每日 09:00 / 21:00 自动签到"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"> <span data-i18n="自动签到（国内）">自动签到（国内）</span></label>
     <label class="toggle" title="国际账号每日运行 4 次（08:00/12:00/16:00/20:00），点亮活跃日后次日可获得 30 积分奖励包" data-i18n-title="国际账号每日运行 4 次（08:00/12:00/16:00/20:00），点亮活跃日后次日可获得 30 积分奖励包"><input type="checkbox" id="bonusToggle" onchange="toggleBonus(this.checked)"> <span data-i18n="每日奖励（国际）">每日奖励（国际）</span></label>
     <span class="toggle" id="svtime"></span>
+    <span style="flex:1"></span>
+    <button type="button" class="sec newbtn" id="btnGlobal" onclick="mmOpen('global')"><span data-i18n="⚙ 国际模型">⚙ 国际模型</span><span class="pill">NEW</span></button>
+    <button type="button" class="sec newbtn" id="btnCN" onclick="mmOpen('cn')"><span data-i18n="⚙ 国内模型">⚙ 国内模型</span><span class="pill">NEW</span></button>
   </div>
   <div class="filter-bar" id="filterBar">
     <button type="button" class="ftag active" data-region="all" onclick="filterRegion('all',this)"><span data-i18n="全部">全部</span> <span class="cnt" id="cntAll">0</span></button>
@@ -266,6 +400,186 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
       <button type="button" onclick="importAuth(this)"><span data-i18n="导入并保存">导入并保存</span></button>
     </div>
   </div>
+</div>
+<!-- ============ MODAL GLOBAL ============ -->
+<div class="mmod" id="mm-ov-global" onclick="mmMaskClick(event,'global')">
+<div class="mmodal" role="dialog" aria-modal="true">
+  <div class="mm-hd">
+    <h2><span data-i18n="国际模型设置">国际模型设置</span> <span class="badge global">Global</span></h2>
+    <button type="button" class="modal-x" onclick="mmClose('global')" aria-label="关闭" data-i18n-aria-label="关闭">✕</button>
+  </div>
+  <div class="mm-tabs">
+    <button type="button" class="tab active" data-tab="models" onclick="mmTab('global','models',this)"><span data-i18n="模型列表">模型列表</span></button>
+    <button type="button" class="tab" data-tab="prefix" onclick="mmTab('global','prefix',this)"><span data-i18n="前缀">前缀</span></button>
+    <button type="button" class="tab" data-tab="advanced" onclick="mmTab('global','advanced',this)"><span data-i18n="高级">高级</span></button>
+  </div>
+  <div class="mm-body" id="mm-body-global">
+    <div class="tabpane" data-pane="models">
+      <div class="fetchline">
+        <span><span data-i18n="范围">范围</span>: <b id="mm-scopelabel-g">—</b> · <span data-i18n="账号覆盖">账号覆盖</span>: <b id="mm-ovr-g">—</b></span>
+        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-ovrbtn-g" onclick="mmDeleteOverride('global')" disabled><span data-i18n="删除账号覆盖">删除账号覆盖</span></button>
+      </div>
+      <div class="fetchline">
+        <span id="mm-fetchstats-g">…</span>
+        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-refetch-g" onclick="mmRefetch('global')"><span data-i18n="↻ 重新拉取">↻ 重新拉取</span></button>
+      </div>
+      <div class="searchrow">
+        <input id="mm-search-g" placeholder="搜索模型 ID / 名称…" data-i18n-placeholder="搜索模型 ID / 名称…" oninput="mmRender('global')">
+        <span class="counter" id="mm-counter-g"></span>
+      </div>
+      <div class="mheadrow"><span></span><span data-i18n="模型 ID">模型 ID</span><span data-i18n="名称">名称</span><span style="text-align:right" data-i18n="上下文">上下文</span><span data-i18n="消耗">消耗</span><span data-i18n="测试">测试</span></div>
+      <div class="mlist" id="mm-list-global"></div>
+      <div class="addrow">
+        <input class="fid" id="mm-add-g-id" placeholder="自定义模型 ID，如 gpt-6.1-nova" data-i18n-placeholder="自定义模型 ID，如 gpt-6.1-nova">
+        <input class="fnm" id="mm-add-g-nm" placeholder="显示名称（可选）" data-i18n-placeholder="显示名称（可选）">
+        <input class="fctx" id="mm-add-g-ctx" placeholder="ctx (200000)">
+        <button type="button" class="sec" onclick="mmAddCustom('global')"><span data-i18n="+ 添加">+ 添加</span></button>
+      </div>
+    </div>
+    <div class="tabpane" data-pane="prefix" style="display:none">
+      <div class="pcard">
+        <h3 data-i18n="模型前缀 — Global">模型前缀 — Global</h3>
+        <div class="desc" data-i18n="模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。">模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。</div>
+        <div class="ptoggle">
+          <div class="switch" id="mm-sw-g-pfx" onclick="mmTogglePrefix('global')"><div class="knob"></div></div>
+          <label onclick="mmTogglePrefix('global')" data-i18n="启用前缀">启用前缀</label>
+          <div class="pinput">
+            <input id="mm-pfx-g" placeholder="cb/" oninput="mmRenderPrefixPreview('global')">
+            <span class="def"><span data-i18n="默认">默认</span>: <code>cb/</code></span>
+          </div>
+        </div>
+        <div class="preview" id="mm-prev-g-pfx"></div>
+        <div class="mm-warn" id="mm-warn-g-pfx"><span data-i18n="⚠️ 前缀关闭 → 模型 Global 裸 ID（glm-5.3 等）。只要不和 CN 裸 ID 冲突就安全；如果两个 realm 都关，重复 ID（glm-5.3、glm-5.2…）路由会歧义。">⚠️ 前缀关闭 → 模型 Global 裸 ID（glm-5.3 等）。只要不和 CN 裸 ID 冲突就安全；如果两个 realm 都关，重复 ID（glm-5.3、glm-5.2…）路由会歧义。</span></div>
+      </div>
+    </div>
+    <div class="tabpane" data-pane="advanced" style="display:none">
+      <div class="adv">
+        <div class="acard">
+          <h3><span data-i18n="Fallback 模型">Fallback 模型</span> <span class="badge tier" style="font-size:10px">missing</span></h3>
+          <div class="desc" data-i18n="客户端请求不存在/被禁用的模型 → 路由到这里而不是 404。这是名字解析，不是错误恢复。">客户端请求不存在/被禁用的模型 → 路由到这里而不是 404。这是名字解析，不是错误恢复。</div>
+          <div class="ptoggle" style="margin:4px 0 8px">
+            <div class="switch" id="mm-sw-g-fbm" onclick="mmToggleFbMissing('global')"><div class="knob"></div></div>
+            <label onclick="mmToggleFbMissing('global')" data-i18n="启用 Fallback 模型">启用 Fallback 模型</label>
+          </div>
+          <select id="mm-fb-g" disabled><option value="">— 无（404）—</option></select>
+          <div class="preview" id="mm-prev-g-fbm" style="margin-top:10px"></div>
+        </div>
+        <div class="acard">
+          <h3><span data-i18n="硬错误重试 Fallback">硬错误重试 Fallback</span> <span class="badge hidden" style="font-size:10px">opt-in</span></h3>
+          <div class="desc" data-i18n="上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭：响应可能来自不同模型（能力与费用不同）；会加 X-WB-Fallback-From 头。">上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭：响应可能来自不同模型（能力与费用不同）；会加 X-WB-Fallback-From 头。</div>
+          <div class="ptoggle" style="margin:4px 0 8px">
+            <div class="switch" id="mm-sw-g-fbr" onclick="mmToggleFbRetry('global')"><div class="knob"></div></div>
+            <label onclick="mmToggleFbRetry('global')" data-i18n="启用硬错误重试">启用硬错误重试</label>
+          </div>
+          <select id="mm-fbr-g" disabled><option value="">— 选择 Fallback 模型 —</option></select>
+          <div class="preview" id="mm-prev-g-fbr" style="margin-top:10px"></div>
+        </div>
+        <div class="mm-note">💡 <span data-i18n="面板保存的是运行时状态（workbuddy-state.json）。要永久生效：点下方 Copy YAML → 粘贴到宿主 config.yaml。">面板保存的是运行时状态（workbuddy-state.json）。要永久生效：点下方 Copy YAML → 粘贴到宿主 config.yaml。</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="mm-foot">
+    <div class="left">
+      <button type="button" class="sec" onclick="mmReset('global')"><span data-i18n="↺ 恢复默认">↺ 恢复默认</span></button>
+      <button type="button" class="sec" onclick="mmCopyYAML('global')"><span data-i18n="📋 复制 YAML">📋 复制 YAML</span></button>
+    </div>
+    <div class="right">
+      <span class="mm-hint" id="mm-dirty-g"></span>
+      <button type="button" class="mm-save-all" id="mm-saveall-g" onclick="mmSave('global','all')"><span data-i18n="保存 — 所有国际账号">保存 — 所有国际账号</span></button>
+      <button type="button" class="sec" style="border-color:var(--ok-border)" onclick="mmSave('global','acct')"><span data-i18n="保存 — 仅此账号">保存 — 仅此账号</span></button>
+    </div>
+  </div>
+</div>
+</div>
+<!-- ============ MODAL CN ============ -->
+<div class="mmod" id="mm-ov-cn" onclick="mmMaskClick(event,'cn')">
+<div class="mmodal" role="dialog" aria-modal="true">
+  <div class="mm-hd">
+    <h2><span data-i18n="国内模型设置">国内模型设置</span> <span class="badge cn">CN</span></h2>
+    <button type="button" class="modal-x" onclick="mmClose('cn')" aria-label="关闭" data-i18n-aria-label="关闭">✕</button>
+  </div>
+  <div class="mm-tabs">
+    <button type="button" class="tab active" data-tab="models" onclick="mmTab('cn','models',this)"><span data-i18n="模型列表">模型列表</span></button>
+    <button type="button" class="tab" data-tab="prefix" onclick="mmTab('cn','prefix',this)"><span data-i18n="前缀">前缀</span></button>
+    <button type="button" class="tab" data-tab="advanced" onclick="mmTab('cn','advanced',this)"><span data-i18n="高级">高级</span></button>
+  </div>
+  <div class="mm-body" id="mm-body-cn">
+    <div class="tabpane" data-pane="models">
+      <div class="fetchline">
+        <span><span data-i18n="范围">范围</span>: <b id="mm-scopelabel-c">—</b> · <span data-i18n="账号覆盖">账号覆盖</span>: <b id="mm-ovr-c">—</b></span>
+        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-ovrbtn-c" onclick="mmDeleteOverride('cn')" disabled><span data-i18n="删除账号覆盖">删除账号覆盖</span></button>
+      </div>
+      <div class="fetchline">
+        <span id="mm-fetchstats-c">…</span>
+        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-refetch-c" onclick="mmRefetch('cn')"><span data-i18n="↻ 重新拉取">↻ 重新拉取</span></button>
+      </div>
+      <div class="searchrow">
+        <input id="mm-search-c" placeholder="搜索模型 ID / 名称…" data-i18n-placeholder="搜索模型 ID / 名称…" oninput="mmRender('cn')">
+        <span class="counter" id="mm-counter-c"></span>
+      </div>
+      <div class="mheadrow"><span></span><span data-i18n="模型 ID">模型 ID</span><span data-i18n="名称">名称</span><span style="text-align:right" data-i18n="上下文">上下文</span><span data-i18n="消耗">消耗</span><span data-i18n="测试">测试</span></div>
+      <div class="mlist" id="mm-list-cn"></div>
+      <div class="addrow">
+        <input class="fid" id="mm-add-c-id" placeholder="自定义模型 ID" data-i18n-placeholder="自定义模型 ID">
+        <input class="fnm" id="mm-add-c-nm" placeholder="显示名称（可选）" data-i18n-placeholder="显示名称（可选）">
+        <input class="fctx" id="mm-add-c-ctx" placeholder="ctx">
+        <button type="button" class="sec" onclick="mmAddCustom('cn')"><span data-i18n="+ 添加">+ 添加</span></button>
+      </div>
+    </div>
+    <div class="tabpane" data-pane="prefix" style="display:none">
+      <div class="pcard">
+        <h3 data-i18n="模型前缀 — CN">模型前缀 — CN</h3>
+        <div class="desc" data-i18n="模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。">模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。</div>
+        <div class="ptoggle">
+          <div class="switch" id="mm-sw-c-pfx" onclick="mmTogglePrefix('cn')"><div class="knob"></div></div>
+          <label onclick="mmTogglePrefix('cn')" data-i18n="启用前缀">启用前缀</label>
+          <div class="pinput">
+            <input id="mm-pfx-c" placeholder="cn/" oninput="mmRenderPrefixPreview('cn')">
+            <span class="def"><span data-i18n="默认">默认</span>: <code>cn/</code></span>
+          </div>
+        </div>
+        <div class="preview" id="mm-prev-c-pfx"></div>
+        <div class="mm-warn" id="mm-warn-c-pfx"><span data-i18n="⚠️ 前缀关闭 → 模型 CN 裸 ID。相同 ID 也存在于 Global（glm-5.3、glm-5.2…）— 路由可能走错 realm，积分倍率不同。">⚠️ 前缀关闭 → 模型 CN 裸 ID。相同 ID 也存在于 Global（glm-5.3、glm-5.2…）— 路由可能走错 realm，积分倍率不同。</span></div>
+      </div>
+    </div>
+    <div class="tabpane" data-pane="advanced" style="display:none">
+      <div class="adv">
+        <div class="acard">
+          <h3><span data-i18n="Fallback 模型">Fallback 模型</span> <span class="badge tier" style="font-size:10px">missing</span></h3>
+          <div class="desc" data-i18n="客户端请求不存在/被禁用的 CN 模型 → 路由到这里而不是 404。">客户端请求不存在/被禁用的 CN 模型 → 路由到这里而不是 404。</div>
+          <div class="ptoggle" style="margin:4px 0 8px">
+            <div class="switch" id="mm-sw-c-fbm" onclick="mmToggleFbMissing('cn')"><div class="knob"></div></div>
+            <label onclick="mmToggleFbMissing('cn')" data-i18n="启用 Fallback 模型">启用 Fallback 模型</label>
+          </div>
+          <select id="mm-fb-c" disabled><option value="">— 无（404）—</option></select>
+          <div class="preview" id="mm-prev-c-fbm" style="margin-top:10px"></div>
+        </div>
+        <div class="acard">
+          <h3><span data-i18n="硬错误重试 Fallback">硬错误重试 Fallback</span> <span class="badge hidden" style="font-size:10px">opt-in</span></h3>
+          <div class="desc" data-i18n="上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭。">上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭。</div>
+          <div class="ptoggle" style="margin:4px 0 8px">
+            <div class="switch" id="mm-sw-c-fbr" onclick="mmToggleFbRetry('cn')"><div class="knob"></div></div>
+            <label onclick="mmToggleFbRetry('cn')" data-i18n="启用硬错误重试">启用硬错误重试</label>
+          </div>
+          <select id="mm-fbr-c" disabled><option value="">— 选择 Fallback 模型 —</option></select>
+          <div class="preview" id="mm-prev-c-fbr" style="margin-top:10px"></div>
+        </div>
+        <div class="mm-note">💡 <span data-i18n="面板保存的是运行时状态（workbuddy-state.json）。要永久生效：点下方 Copy YAML → 粘贴到宿主 config.yaml。">面板保存的是运行时状态（workbuddy-state.json）。要永久生效：点下方 Copy YAML → 粘贴到宿主 config.yaml。</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="mm-foot">
+    <div class="left">
+      <button type="button" class="sec" onclick="mmReset('cn')"><span data-i18n="↺ 恢复默认">↺ 恢复默认</span></button>
+      <button type="button" class="sec" onclick="mmCopyYAML('cn')"><span data-i18n="📋 复制 YAML">📋 复制 YAML</span></button>
+    </div>
+    <div class="right">
+      <span class="mm-hint" id="mm-dirty-c"></span>
+      <button type="button" class="mm-save-all" id="mm-saveall-c" onclick="mmSave('cn','all')"><span data-i18n="保存 — 所有国内账号">保存 — 所有国内账号</span></button>
+      <button type="button" class="sec" style="border-color:var(--ok-border)" onclick="mmSave('cn','acct')"><span data-i18n="保存 — 仅此账号">保存 — 仅此账号</span></button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="toasts" id="toasts"></div>
 <script>
@@ -450,7 +764,135 @@ const PANEL_EN = {
   "请粘贴 CodeBuddy 账号凭据 JSON": "Paste CodeBuddy credential JSON",
   "取消": "Cancel",
   "导入并保存": "Import and Save",
-  "界面语言": "Interface language"
+  "界面语言": "Interface language",
+  "⚙ 国际模型": "⚙ Global Models",
+  "⚙ 国内模型": "⚙ CN Models",
+  "国际模型设置": "Global Model Settings",
+  "国内模型设置": "CN Model Settings",
+  "模型列表": "Model List",
+  "前缀": "Prefix",
+  "高级": "Advanced",
+  "范围": "Scope",
+  "仅此账号": " only",
+  "所有国际账号": "all Global accounts",
+  "所有国内账号": "all CN accounts",
+  "账号覆盖": "per-account override",
+  "无": "none",
+  " — 此账号用独立设置（覆盖 realm）": " — uses its own settings (overrides realm)",
+  "删除账号覆盖": "Delete account override",
+  "账号覆盖已删除 — 回到 realm 设置": "Account override deleted — back to realm settings",
+  "删除覆盖失败": "Failed to delete override",
+  "↻ 重新拉取": "↻ Re-fetch",
+  "重新拉取完成 — 上游 ∪ 目录已合并，新模型会出现": "Re-fetch done — upstream ∪ catalog merged, new models appear",
+  "重新拉取失败": "Re-fetch failed",
+  "搜索模型 ID / 名称…": "Search model id / name…",
+  "模型 ID": "Model ID",
+  "名称": "Name",
+  "上下文": "Context",
+  "消耗": "Cost",
+  "测试": "Test",
+  "自定义模型 ID，如 gpt-6.1-nova": "custom model id, e.g. gpt-6.1-nova",
+  "自定义模型 ID": "custom model id",
+  "显示名称（可选）": "display name (optional)",
+  "+ 添加": "+ Add",
+  "先填模型 ID": "Enter a model ID first",
+  "ID 已在列表中": "ID already in the list",
+  "自定义模型已添加：": "Custom model added: ",
+  "免费 — 倍率 x0.00（完整别名在下面各 vendor 分区）": "Free — multiplier x0.00 (full aliases also under each vendor below)",
+  "Tier 别名（route）": "Tier aliases (route)",
+  "上游模型 — /v2 ∪ /v3 config（按 vendor）": "Upstream models — /v2 ∪ /v3 config (per vendor)",
+  "上游模型 — console cli ∪ /v3 config（按 vendor）": "Upstream models — console cli ∪ /v3 config (per vendor)",
+  "隐藏 — 已通过 test chat 验证（不在上游 config 列表）": "Hidden — verified via test chat (not listed in upstream config)",
+  "过期 — 上游已不返回（可能下线）": "Stale — no longer sent by upstream (likely retired)",
+  "工具 / 上游内部 — 默认关闭（无 chat 计费）": "Utility / upstream internal — default OFF (no chat billing)",
+  "自定义": "Custom",
+  "没有匹配的模型": "No models match",
+  " 显示 · ": " shown · ",
+  " 启用": " enabled",
+  "免费": "FREE",
+  "/N 账号": "/N accts",
+  "耗尽": "exhausted",
+  "上游拉取 ": "Fetched ",
+  "目录 ": "catalog ",
+  " 个过期": " stale",
+  " 免费": " FREE",
+  "经 ": "via ",
+  "合并所有账号 ": "merge all accounts ",
+  "刚刚": "just now",
+  " 分钟前": "m ago",
+  " 小时前": "h ago",
+  " 天前": "d ago",
+  "模型前缀 — Global": "Model prefix — Global",
+  "模型前缀 — CN": "Model prefix — CN",
+  "模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。": "Global models are emitted with this prefix to the client (/v1/models & routing). Toggle ON empty = use default.",
+  "模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。": "CN models are emitted with this prefix (currently hardcoded cn/). Toggle ON empty = use default.",
+  "启用前缀": "Use prefix",
+  "默认": "default",
+  "客户端看到：": "Client sees: ",
+  "全部禁用": "all disabled",
+  "⚠️ 前缀关闭 → 模型 Global 裸 ID（glm-5.3 等）。只要不和 CN 裸 ID 冲突就安全；如果两个 realm 都关，重复 ID（glm-5.3、glm-5.2…）路由会歧义。": "⚠️ Prefix OFF → Global models are bare (glm-5.3 etc). Safe as long as they don't collide with CN bare ids — if both realms are OFF, duplicate ids (glm-5.3, glm-5.2, …) make routing ambiguous.",
+  "⚠️ 前缀关闭 → 模型 CN 裸 ID。相同 ID 也存在于 Global（glm-5.3、glm-5.2…）— 路由可能走错 realm，积分倍率不同。": "⚠️ Prefix OFF → CN models are bare. The same ids exist on Global (glm-5.3, glm-5.2, …) — routing may hit the wrong realm with a different credit multiplier.",
+  "Fallback 模型": "Fallback model",
+  "客户端请求不存在/被禁用的模型 → 路由到这里而不是 404。这是名字解析，不是错误恢复。": "Client requests a missing/disabled model → route here instead of 404. This is name resolution, not error recovery.",
+  "客户端请求不存在/被禁用的 CN 模型 → 路由到这里而不是 404。": "Client requests a missing/disabled CN model → route here instead of 404.",
+  "启用 Fallback 模型": "Enable fallback model",
+  "— 无（404）—": "— none (404) —",
+  "— 选择 Fallback 模型 —": "— pick fallback model —",
+  "硬错误重试 Fallback": "Retry fallback on hard error",
+  "上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭：响应可能来自不同模型（能力与费用不同）；会加 X-WB-Fallback-From 头。": "Upstream hard-fails (403/5xx) and account failover also fails → retry 1× on the fallback model. Default OFF: response can come from a different model (different capability & cost); marked with X-WB-Fallback-From.",
+  "上游硬失败（403/5xx）且账号 failover 也失败 → 用 Fallback 模型重试 1 次。默认关闭。": "Upstream hard-fails (403/5xx) and account failover also fails → retry 1× on the fallback model. Default OFF.",
+  "启用硬错误重试": "Enable retry on hard error",
+  "模型不在列表 → ": "Model not in list → ",
+  "（请求转到这里）": " (request forwarded here)",
+  "（默认，安全网关闭）": " (default, safety net off)",
+  "（未选择）": "(none picked)",
+  "所有账号 403/5xx → ": "403/5xx on all accounts → ",
+  "（重试 1 次，带 X-WB-Fallback-From 头）": " (1× retry, X-WB-Fallback-From header set)",
+  "（错误直接返回客户端）": " (error passed to client)",
+  "面板保存的是运行时状态（workbuddy-state.json）。要永久生效：点下方 Copy YAML → 粘贴到宿主 config.yaml。": "The panel saves runtime state (workbuddy-state.json). To persist: Copy YAML below → paste into the host config.yaml.",
+  "↺ 恢复默认": "↺ Reset to defaults",
+  " 已恢复默认": " reset to defaults",
+  "重置失败": "Reset failed",
+  "📋 复制 YAML": "📋 Copy YAML persist",
+  "YAML 已复制到剪贴板": "YAML copied to clipboard",
+  "YAML 已显示 — 手动复制": "YAML shown — copy manually",
+  "空 = 默认 ": "empty = default ",
+  "● 未保存更改": "● unsaved changes",
+  "已保存 ✓": "saved ✓",
+  "保存 — 所有国际账号": "Save — all Global accounts",
+  "保存 — 所有国内账号": "Save — all CN accounts",
+  "保存 — 仅此账号": "Save — this account only",
+  "已保存（仅此账号）— 层级：账号 > realm > 默认": "Saved (this account only) — layering: account > realm > default",
+  "已保存（全部 ": "Saved (all ",
+  " 账号）": " accounts)",
+  "国际": "Global",
+  "国内": "CN",
+  "保存失败": "Save failed",
+  "此模型已不在上游目录，也没有其他价格来源 → 上游未公布。按 Test 验证（11133 = provider 拒绝）。": "No longer in the upstream catalog and no other price source → upstream doesn't publish. Press Test to verify (11133 = rejected by provider).",
+  "~ = 来自归档/推断（不是上游实时 — 模型已不在目录），可能过时。按 Test 验证。": "~ = from archive/inference (not upstream live — model left the catalog), may be outdated. Press Test to verify.",
+  "上游内部/工具模型 — 没有公开 chat 计费。": "Upstream internal/utility model — no public chat billing.",
+  "上游没有提供此模型的 credits 字段。": "Upstream gives no credits field for this model.",
+  "最大上下文（supportedLengths 最大值 / maxInputTokens）": "Max context (supportedLengths max / maxInputTokens)",
+  "能响应但拒绝默认 reasoning_effort（11150）— 需要特殊 effort。Pi/cline 可能调不通这个模型。": "Alive but rejects default reasoning_effort (11150) — needs a special effort. Pi/cline may fail to call this model.",
+  "上游目录（/v2 & /v3）没有列出，但已通过 test chat 验证可用 — 倍率来自真实 credit 用量。": "Not listed in upstream catalog (/v2 & /v3) but verified alive via test chat — multiplier measured from real credit usage.",
+  "隐藏模型：上游不宣传但目录里存在。": "Hidden model: not advertised upstream but present in catalog.",
+  "插件里还有，但上游这次拉取没有发送 — 大概率已下线。~ = 归档价（可能失效）；n/a = 无价格来源。按 Test：200 = 还活着，11102/11133 = 确定下线。": "Still in the plugin catalog but upstream didn't send it this fetch — likely retired. ~ = archived price (may be stale); n/a = no price source. Test: 200 = alive, 11102/11133 = retired.",
+  "拥有此模型的所有账号都已 EXHAUSTED — 在账号恢复前路由会失败。": "All accounts owning this model are EXHAUSTED — routing fails until an account recovers.",
+  "只有部分账号拥有这个 entitlement。": "Only some accounts carry this entitlement.",
+  "当前版本": "Current version",
+  "🡇 有新版本可用！": "🡇 A new version is available!",
+  "最新版": "Latest",
+  "⬇ 通过 GitHub 更新": "⬇ Update via GitHub",
+  "发布说明": "Release notes",
+  "校验和": "Checksum",
+  "跳过此版本": "Skip this version",
+  " 可用": " available",
+  "上次检查：": "Last check: ",
+  "（每 6 小时自动）": " (auto every 6h)",
+  "已是最新版本": "Already on the latest version",
+  "已跳过 v": "Skipped v",
+  " — 通知会在下个版本回来": " — the notice returns with the next version",
+  "What's new:": "What's new:"
 };
 let panelLanguage = (()=>{
   try { const saved=localStorage.getItem(PANEL_LANGUAGE_KEY); if(saved==="en"||saved==="zh-CN")return saved; } catch(_) {}
@@ -1318,6 +1760,608 @@ if(getKey()){
 }else{
   showAuth();
 }
+</script>
+<script>
+/* ===== Model Manager UI (Global / CN) + Update checker — WORKER-2 0.9.7 =====
+   Render dari endpoint GET /models/config (kontrak PLAN-0907):
+   {
+     realms: {
+       global: {
+         scope: "all"|"auth",
+         override_auth: "",                    // AuthID yang punya override ("" = tidak ada)
+         accounts: ["Intl-…", "…"],            // daftar akun realm ini (untuk fetch/test/save per-akun)
+         fetch_account: "Intl-…",              // akun yang dipakai fetch
+         fetched_at: "RFC3339", upstream: 31, catalog: 9, free: 9,
+         prefix: { enabled: false, value: "", def: "cb/" },
+         disabled: ["gpt-6-astra"],            // union blacklist efektif (layering sudah di-resolve backend)
+         custom: [{id,name,ctx}],
+         fallback:    { enabled:false, model:"" },
+         retry_fallback: { enabled:false, model:"" },
+         models: [{ id,name,ctx,mult,hidden,verified,stale,effort,tier,util,custom,partial,owned_by,all_exhausted,new }]
+       },
+       cn: { … sama, prefix.def "cn/", cn_disabled_models dst di-handle backend }
+     },
+     version: { current: "0.9.6", registry: { version, released_at, notes:[…], checksum, url } }
+   }
+   POST /models/config  body: { realm, scope:"all"|"auth", auth:"", state:{ disabled:[…], custom:[…],
+     prefix_enabled, prefix_value, fallback_enabled, fallback_model, retry_fallback_enabled, retry_fallback_model } }
+   POST /models/refresh body: { realm, account }   → invalidate cache + fan-out fetch upstream (gratis)
+   POST /models/test    body: { realm, account, model } → { ok, status, credit, error }
+   GET  /update/check   → { current, latest:{version,released_at,notes,checksum,url}, checked_at, last_check }
+   Endpoint belum ada → UI tetap render (error state + toast), tanpa data hardcode. */
+
+const MM_API = API; // sama base endpoint plugin
+const MM = {
+  cfg: { global: null, cn: null },   // snapshot terakhir dari GET /models/config
+  state: { global: null, cn: null }, // state yang diedit user
+  dirty: { global: false, cn: false },
+  search: { global: "", cn: "" },
+  tab: { global: "models", cn: "models" },
+  skipVersion: (()=>{ try{return localStorage.getItem("workbuddy-update-skip")||""}catch(e){return ""} })(),
+  update: null,
+  loaded: false
+};
+const MM_DEFAULT_PFX = { global: "cb/", cn: "cn/" };
+
+function mmToast(msg, kind){ toast(msg, kind||"ok", ""); }
+function mmFail(realm, err){
+  const el=document.getElementById("mm-fetchstats-"+(realm==="global"?"g":"c"));
+  if(el) el.innerHTML='<span style="color:var(--err)">'+esc(err)+'</span>';
+}
+
+async function mmGetConfig(){
+  const d = await api("/models/config");
+  if(d && d.error) throw new Error(d.error);
+  MM.cfg.global = (d && d.realms && d.realms.global) || null;
+  MM.cfg.cn = (d && d.realms && d.realms.cn) || null;
+  if(!MM.cfg.global && !MM.cfg.cn) throw new Error("GET /models/config: no realms payload");
+  for(const r of ["global","cn"]){
+    if(MM.cfg[r]) MM.state[r] = mmStateFromCfg(r, MM.cfg[r]);
+  }
+  MM.loaded = true;
+  mmRenderAll();
+  if(d && d.version) mmHandleUpdate(d.version);
+}
+function mmStateFromCfg(realm, c){
+  return {
+    disabled: new Set(c.disabled||[]),
+    custom: (c.custom||[]).map(x=>({id:x.id, name:x.name||x.nm||x.id, ctx:String(x.ctx||"")})),
+    pfxOn: !!(c.prefix && c.prefix.enabled),
+    pfxVal: (c.prefix && c.prefix.value) || "",
+    pfxDef: (c.prefix && c.prefix.def) || MM_DEFAULT_PFX[realm],
+    fbOn: !!(c.fallback && c.fallback.enabled),
+    fbModel: (c.fallback && c.fallback.model) || "",
+    fbrOn: !!(c.retry_fallback && c.retry_fallback.enabled),
+    fbrModel: (c.retry_fallback && c.retry_fallback.model) || ""
+  };
+}
+function mmRenderAll(){
+  for(const r of ["global","cn"]){
+    if(MM.cfg[r]){
+      mmRenderScope(r); mmRenderFetchStats(r); mmRenderModels(r);
+      mmRenderPrefixUI(r); mmRenderFallbackUI(r); mmRenderPreview(r);
+      mmRenderAdvancedPreviews(r);
+    }
+  }
+}
+
+/* ---------- scope / fetchline ---------- */
+function mmRenderScope(realm){
+  const c=MM.cfg[realm]; if(!c)return;
+  const g=realm==="global";
+  const sl=document.getElementById(g?"mm-scopelabel-g":"mm-scopelabel-c");
+  const ov=document.getElementById(g?"mm-ovr-g":"mm-ovr-c");
+  const ovb=document.getElementById(g?"mm-ovrbtn-g":"mm-ovrbtn-c");
+  if(sl) sl.textContent = c.scope==="auth"
+    ? ((c.fetch_account||"")+tr(" 仅此账号"))
+    : (g?tr(" 所有国际账号"):tr(" 所有国内账号"));
+  const hasOv=!!c.override_auth;
+  if(ov) ov.textContent = hasOv ? (c.override_auth+tr(" — 此账号用独立设置（覆盖 realm）")) : tr("无");
+  if(ovb) ovb.disabled=!hasOv;
+}
+function fmtAgo(iso){
+  if(!iso)return "";
+  const t=new Date(iso).getTime(); if(isNaN(t))return "";
+  const s=Math.max(0,Math.round((Date.now()-t)/1000));
+  if(s<60)return tr("刚刚");
+  if(s<3600)return Math.round(s/60)+tr(" 分钟前");
+  if(s<86400)return Math.round(s/3600)+tr(" 小时前");
+  return Math.round(s/86400)+tr(" 天前");
+}
+function mmRenderFetchStats(realm){
+  const c=MM.cfg[realm]; if(!c)return;
+  const el=document.getElementById(realm==="global"?"mm-fetchstats-g":"mm-fetchstats-c");
+  if(!el)return;
+  const g=realm==="global";
+  let accts=(c.accounts||[]);
+  const sel=g?"mm-facct-g":"mm-facct-c";
+  let acctSel='<select id="'+sel+'" onchange="mmChangeFetchAcct(\''+realm+'\')">'
+    +accts.map(a=>'<option'+(a===c.fetch_account?' selected':'')+'>'+esc(a)+'</option>').join("")+'</select>';
+  const parts=[];
+  parts.push(tr("上游拉取 ")+'<b>'+(c.upstream!=null?c.upstream:"?")+'</b> <code>'+(g?"/v2 ∪ /v3/config · UA WorkBuddy":"copilot.tencent.com console cli ∪ /v3/config")+'</code>');
+  if(c.catalog) parts.push(tr("目录 ")+'<b>'+c.catalog+'</b>'+tr(" 个过期"));
+  if(c.free) parts.push('<b>'+c.free+'</b>'+tr(" 免费"));
+  parts.push(tr("经 ")+acctSel);
+  parts.push(tr("合并所有账号 "));
+  if(c.fetched_at) parts.push(esc(fmtAgo(c.fetched_at)));
+  el.innerHTML=parts.join(' · ');
+}
+async function mmChangeFetchAcct(realm){
+  const g=realm==="global";
+  const sel=document.getElementById(g?"mm-facct-g":"mm-facct-c");
+  const acct=sel?sel.value:"";
+  try{ await api("/models/config?realm="+encodeURIComponent(realm)+"&fetch_account="+encodeURIComponent(acct)); await mmGetConfig(); }
+  catch(e){ mmFail(realm, e.message||String(e)); }
+}
+async function mmRefetch(realm){
+  const g=realm==="global";
+  const btn=document.getElementById(g?"mm-refetch-g":"mm-refetch-c");
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
+    btn.style.borderColor="var(--mut-border)";}
+  try{
+    const sel=document.getElementById(g?"mm-facct-g":"mm-facct-c");
+    await api("/models/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm, account:sel?sel.value:""})});
+    await mmGetConfig();
+    mmToast(tr("重新拉取完成 — 上游 ∪ 目录已合并，新模型会出现"));
+  }catch(e){ mmFail(realm, e.message||String(e)); mmToast(tr("重新拉取失败"),"err",e.message||String(e)); }
+  finally{ if(btn){btn.disabled=false;btn.innerHTML=tr("↻ 重新拉取");} }
+}
+
+/* ---------- model list ---------- */
+function mmFamilyOf(id){
+  id=String(id||"");
+  if(id.startsWith('deepseek'))return 'DeepSeek';
+  if(id.startsWith('gemini'))return 'Gemini';
+  if(id.startsWith('glm'))return 'GLM (Zhipu)';
+  if(id.startsWith('gpt'))return 'GPT (OpenAI)';
+  if(id.startsWith('grok'))return 'Grok (xAI)';
+  if(id.startsWith('hy'))return 'Hy (Tencent)';
+  if(id.startsWith('kimi'))return 'Kimi (Moonshot)';
+  if(id.startsWith('minimax'))return 'MiniMax';
+  if(id.startsWith('step'))return 'StepFun';
+  if(id.startsWith('space'))return 'Space-Bunny';
+  if(id.startsWith('hunyuan'))return 'Hunyuan (Tencent)';
+  return null;
+}
+function mmCostCell(m){
+  const t=(txt)=>'<span class="est" title="'+esc(txt)+'">';
+  if(m.stale && !m.mult) return t(tr("此模型已不在上游目录，也没有其他价格来源 → 上游未公布。按 Test 验证（11133 = provider 拒绝）。"))+'n/a</span>';
+  if(m.stale && m.mult) return '<span class="badge cr" title="'+esc(tr("~ = 来自归档/推断（不是上游实时 — 模型已不在目录），可能过时。按 Test 验证。"))+'">~'+esc(m.mult)+'</span>';
+  if(m.util && !m.mult) return t(tr("上游内部/工具模型 — 没有公开 chat 计费。"))+'n/a</span>';
+  if(m.tier && !m.mult) return '<span class="badge cr">route</span>';
+  if(m.mult==null||m.mult==="?") return t(tr("上游没有提供此模型的 credits 字段。"))+'?</span>';
+  const n=parseFloat(String(m.mult).replace("x",""));
+  if(isNaN(n)) return '<span class="est">?</span>';
+  if(n===0) return '<span class="badge cr0">'+tr("免费")+'</span>';
+  return '<span class="badge cr">'+esc(m.mult)+'</span>';
+}
+function mmCtxCell(m){
+  return '<span class="ctx" title="'+esc(tr("最大上下文（supportedLengths 最大值 / maxInputTokens）"))+'">'+esc(m.ctx||"—")+'</span>';
+}
+function mmBadges(m){
+  let s="";
+  if(m.tier) s+='<span class="badge tier">tier</span>';
+  if(m.effort) s+='<span class="badge warnb" title="'+esc(tr("能响应但拒绝默认 reasoning_effort（11150）— 需要特殊 effort。Pi/cline 可能调不通这个模型。"))+'">effort?</span>';
+  if(m.hidden) s+=m.verified
+    ? '<span class="badge hidden" title="'+esc(tr("上游目录（/v2 & /v3）没有列出，但已通过 test chat 验证可用 — 倍率来自真实 credit 用量。"))+'">hidden·verified</span>'
+    : '<span class="badge hidden" title="'+esc(tr("隐藏模型：上游不宣传但目录里存在。"))+'">hidden</span>';
+  if(m.new) s+='<span class="badge cr0">new</span>';
+  if(m.stale) s+='<span class="badge stale" title="'+esc(tr("插件里还有，但上游这次拉取没有发送 — 大概率已下线。~ = 归档价（可能失效）；n/a = 无价格来源。按 Test：200 = 还活着，11102/11133 = 确定下线。"))+'">stale?</span>';
+  if(m.partial){
+    const warn=m.all_exhausted;
+    s+='<span class="badge '+(warn?"errb":"warnb")+'" title="'+esc(warn
+      ?tr("拥有此模型的所有账号都已 EXHAUSTED — 在账号恢复前路由会失败。")
+      :tr("只有部分账号拥有这个 entitlement。"))+'">'+esc(m.owned_by||"?")+tr("/N 账号")+(warn?" · ⚠ "+tr("耗尽"):"")+'</span>';
+  }
+  if(m.custom) s+='<span class="badge custom">custom</span>';
+  return s;
+}
+function mmRow(realm,m){
+  const st=MM.state[realm];
+  const off=st.disabled.has(m.id);
+  return '<div class="mrow'+(off?" off":"")+'">'
+    +'<input type="checkbox" '+(off?"":"checked")+' onchange="mmToggleModel(\''+realm+'\',\''+esc(m.id)+'\',this.checked)">'
+    +'<span class="id">'+esc(m.id)+'</span>'
+    +'<span class="nm">'+esc(m.name||m.nm||m.id)+' '+mmBadges(m)+'</span>'
+    +mmCtxCell(m)
+    +'<span>'+mmCostCell(m)+'</span>'
+    +'<button type="button" class="testbtn" data-mmtest="'+esc(m.id)+'" onclick="mmTest(this,\''+realm+'\',\''+esc(m.id)+'\')">'+tr("测试")+'</button>'
+    +'</div>';
+}
+function mmSection(list,title,extra,count,style){
+  if(!count)return "";
+  const cnt='<span'+(style?' style="'+style+'"':'')+'>'+count+'</span>';
+  return '<div class="ghead"'+(style?' style="'+style+'"':'')+'><span>'+title+'</span>'+(extra||cnt)+'</div>'
+    + list.join("");
+}
+function mmRenderModels(realm){
+  const st=MM.state[realm], c=MM.cfg[realm];
+  const g=realm==="global";
+  const listEl=document.getElementById(g?"mm-list-global":"mm-list-cn");
+  const cntEl=document.getElementById(g?"mm-counter-g":"mm-counter-c");
+  if(!listEl||!st||!c)return;
+  const q=(MM.search[realm]||"").toLowerCase();
+  let all=(c.models||[]).map(m=>Object.assign({},m));
+  // custom dari state (bisa baru ditambah) menimpa yang datang dari cfg
+  const cfgCust=new Set((c.models||[]).filter(m=>m.custom).map(m=>m.id));
+  st.custom.forEach(x=>{ if(!cfgCust.has(x.id)) all.push({id:x.id,name:x.name,ctx:x.ctx,custom:1,mult:"?"}); });
+  all=all.filter(m=>m.custom||!st.custom.some(x=>x.id===m.id));
+  if(q) all=all.filter(m=>String(m.id).toLowerCase().includes(q)||String(m.name||"").toLowerCase().includes(q));
+  const pick=f=>all.filter(f);
+  const emitRows=arr=>arr.map(m=>mmRow(realm,m));
+  let html="", shown=0, enabled=0;
+  all.forEach(m=>{shown++; if(!st.disabled.has(m.id))enabled++;});
+  if(g){
+    const tiers=pick(m=>m.tier);
+    const up=pick(m=>!m.tier&&!m.stale&&!m.custom&&!m.verified);
+    const free=up.filter(m=>{const n=parseFloat(String(m.mult||"").replace("x",""));return n===0;});
+    const paid=up.filter(m=>{const n=parseFloat(String(m.mult||"").replace("x",""));return !(n===0);});
+    const ver=pick(m=>m.verified);
+    const stale=pick(m=>m.stale&&!m.custom);
+    const cust=pick(m=>m.custom);
+    const sec=(rows,title,opts)=>{if(!rows.length)return;html+=mmSection(emitRows(rows),title,null,rows.length,opts&&opts.style);};
+    // 1) Free — x0.00 paling atas
+    sec(free,tr("免费 — 倍率 x0.00（完整别名在下面各 vendor 分区）"),{style:"background:var(--ok-soft)"});
+    // 2) Tier aliases
+    sec(tiers,tr("Tier 别名（route）"));
+    // 3) Upstream per vendor (sub-header alfabetis; dalam vendor urut harga)
+    if(paid.length){
+      html+='<div class="ghead"><span>'+tr("上游模型 — /v2 ∪ /v3 config（按 vendor）")+'</span><span>'+paid.length+'</span></div>';
+      let last=null;
+      emitRows(paid).forEach((row,i)=>{
+        const f=mmFamilyOf(paid[i].id)||"";
+        if(f&&f!==last){last=f;html+='<div class="famhead">'+esc(f)+'</div>';}
+        html+=row;
+      });
+    }
+    // 4) Hidden — verified
+    sec(ver,tr("隐藏 — 已通过 test chat 验证（不在上游 config 列表）"),{style:"background:var(--acc-ring)"});
+    // 5) Stale
+    sec(stale,tr("过期 — 上游已不返回（可能下线）"),{style:"background:var(--warn-soft);text-transform:none;letter-spacing:0"});
+    // 6) Custom
+    sec(cust,tr("自定义"));
+  }else{
+    const tiers=pick(m=>m.tier);
+    const mains=pick(m=>!m.tier&&!m.util&&!m.custom&&!m.stale);
+    const free=mains.filter(m=>{const n=parseFloat(String(m.mult||"").replace("x",""));return n===0;});
+    const paid=mains.filter(m=>{const n=parseFloat(String(m.mult||"").replace("x",""));return !(n===0);});
+    const utils=pick(m=>m.util);
+    const stale=pick(m=>m.stale&&!m.custom);
+    const cust=pick(m=>m.custom);
+    const sec=(rows,title,opts)=>{if(!rows.length)return;html+=mmSection(emitRows(rows),title,null,rows.length,opts&&opts.style);};
+    sec(free,tr("免费 — 倍率 x0.00（完整别名在下面各 vendor 分区）"),{style:"background:var(--ok-soft)"});
+    sec(tiers,tr("Tier 别名（route）"));
+    if(paid.length){
+      html+='<div class="ghead"><span>'+tr("上游模型 — console cli ∪ /v3 config（按 vendor）")+'</span><span>'+paid.length+'</span></div>';
+      let last=null;
+      emitRows(paid).forEach((row,i)=>{
+        const f=mmFamilyOf(paid[i].id)||"";
+        if(f&&f!==last){last=f;html+='<div class="famhead">'+esc(f)+'</div>';}
+        html+=row;
+      });
+    }
+    sec(utils,tr("工具 / 上游内部 — 默认关闭（无 chat 计费）"),{style:"background:var(--warn-soft)"});
+    sec(stale,tr("过期 — 上游已不返回（可能下线）"),{style:"background:var(--warn-soft);text-transform:none;letter-spacing:0"});
+    sec(cust,tr("自定义"));
+  }
+  listEl.innerHTML=html||('<div class="loading">'+tr("没有匹配的模型")+'</div>');
+  if(cntEl)cntEl.textContent=shown+tr(" 显示 · ")+enabled+tr(" 启用");
+}
+function mmToggleModel(realm,id,on){
+  const st=MM.state[realm];
+  if(on)st.disabled.delete(id);else st.disabled.add(id);
+  mmMarkDirty(realm); mmRenderModels(realm); mmRenderPreview(realm);
+}
+function mmAddCustom(realm){
+  const g=realm==="global";
+  const p=[g?"mm-add-g-id":"mm-add-c-id",g?"mm-add-g-nm":"mm-add-c-nm",g?"mm-add-g-ctx":"mm-add-c-ctx"];
+  const id=document.getElementById(p[0]).value.trim();
+  if(!id){mmToast(tr("先填模型 ID"),"warn");return;}
+  const c=MM.cfg[realm]||{};
+  if((c.models||[]).some(m=>m.id===id)||MM.state[realm].custom.some(m=>m.id===id)){mmToast(tr("ID 已在列表中"),"warn");return;}
+  MM.state[realm].custom.push({id:id,name:document.getElementById(p[1]).value.trim()||id,ctx:document.getElementById(p[2]).value.trim()||"—"});
+  document.getElementById(p[0]).value="";document.getElementById(p[1]).value="";document.getElementById(p[2]).value="";
+  mmMarkDirty(realm); mmRenderModels(realm); mmRenderPreview(realm);
+  mmToast(tr("自定义模型已添加：")+id);
+}
+
+/* ---------- Test button ---------- */
+async function mmTest(btn,realm,id){
+  const c=MM.cfg[realm]||{};
+  const acct=c.fetch_account||((c.accounts||[])[0]||"");
+  btn.textContent="…";btn.className="testbtn";btn.disabled=true;
+  try{
+    const d=await api("/models/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm,account:acct,model:id})});
+    if(d&&d.ok){
+      btn.textContent=(d.status||200)+" · "+(d.credit!=null?d.credit+"cr":"ok");
+      btn.className="testbtn ok";
+    }else{
+      btn.textContent=(d&&d.status)||"403";
+      btn.className="testbtn err";
+      btn.title=esc((d&&d.error)||"");
+    }
+  }catch(e){
+    btn.textContent="err";btn.className="testbtn err";btn.title=esc(e.message||String(e));
+  }
+  btn.disabled=false;
+  setTimeout(()=>{btn.textContent=tr("测试");btn.className="testbtn";btn.title="";},3000);
+}
+
+/* ---------- Prefix tab ---------- */
+function mmRenderPrefixUI(realm){
+  const st=MM.state[realm];if(!st)return;
+  const g=realm==="global";
+  const sw=document.getElementById(g?"mm-sw-g-pfx":"mm-sw-c-pfx");
+  const inp=document.getElementById(g?"mm-pfx-g":"mm-pfx-c");
+  if(sw)sw.classList.toggle("on",st.pfxOn);
+  if(inp&&inp.value!==st.pfxVal)inp.value=st.pfxVal;
+}
+function mmTogglePrefix(realm){
+  const st=MM.state[realm];st.pfxOn=!st.pfxOn;
+  mmMarkDirty(realm);mmRenderPrefixUI(realm);mmRenderPreview(realm);
+}
+function mmEffPfx(realm){
+  const st=MM.state[realm];
+  if(!st.pfxOn)return "";
+  const v=(st.pfxVal||"").trim().replace(/\/?$/, "/");
+  return v||st.pfxDef||MM_DEFAULT_PFX[realm];
+}
+function mmRenderPreview(realm){
+  const st=MM.state[realm];if(!st)return;
+  const g=realm==="global";
+  const el=document.getElementById(g?"mm-prev-g-pfx":"mm-prev-c-pfx");
+  if(!el)return;
+  const p=mmEffPfx(realm);
+  const c=MM.cfg[realm]||{};
+  const ids=(c.models||[]).filter(m=>!st.disabled.has(m.id)).slice(0,3).map(m=>"<b>"+esc(p+m.id)+"</b>").join(" · ");
+  el.innerHTML=tr("客户端看到：")+(ids||"<i>"+tr("全部禁用")+"</i>");
+  const warn=document.getElementById(g?"mm-warn-g-pfx":"mm-warn-c-pfx");
+  if(warn)warn.classList.toggle("show",!st.pfxOn);
+}
+
+/* ---------- Advanced tab ---------- */
+function mmRenderFallbackUI(realm){
+  const st=MM.state[realm];if(!st)return;
+  const g=realm==="global";
+  const sw1=document.getElementById(g?"mm-sw-g-fbm":"mm-sw-c-fbm");
+  const sel1=document.getElementById(g?"mm-fb-g":"mm-fb-c");
+  const sw2=document.getElementById(g?"mm-sw-g-fbr":"mm-sw-c-fbr");
+  const sel2=document.getElementById(g?"mm-fbr-g":"mm-fbr-c");
+  if(sw1)sw1.classList.toggle("on",st.fbOn);
+  if(sw2)sw2.classList.toggle("on",st.fbrOn);
+  // isi option dari daftar model (ringan: id yang enabled)
+  const c=MM.cfg[realm]||{};
+  const ids=(c.models||[]).filter(m=>!st.disabled.has(m.id)&&!m.util).map(m=>m.id);
+  const fill=(sel,cur,ph)=>{
+    if(!sel)return;
+    const prev=[cur].concat(ids).filter((v,i,a)=>v&&a.indexOf(v)===i);
+    sel.innerHTML='<option value="">'+ph+'</option>'+prev.map(x=>'<option'+(x===cur?' selected':'')+'>'+esc(x)+'</option>').join("");
+  };
+  fill(sel1,st.fbModel,tr("— 无（404）—"));
+  fill(sel2,st.fbrModel,tr("— 选择 Fallback 模型 —"));
+  if(sel1)sel1.disabled=!st.fbOn;
+  if(sel2)sel2.disabled=!st.fbrOn;
+}
+function mmToggleFbMissing(realm){
+  const st=MM.state[realm];st.fbOn=!st.fbOn;
+  const g=realm==="global";
+  const sel=document.getElementById(g?"mm-fb-g":"mm-fb-c");
+  if(sel)sel.disabled=!st.fbOn;
+  mmMarkDirty(realm);mmRenderAdvancedPreviews(realm);
+}
+function mmToggleFbRetry(realm){
+  const st=MM.state[realm];st.fbrOn=!st.fbrOn;
+  const g=realm==="global";
+  const sel=document.getElementById(g?"mm-fbr-g":"mm-fbr-c");
+  if(sel)sel.disabled=!st.fbrOn;
+  mmMarkDirty(realm);mmRenderAdvancedPreviews(realm);
+}
+function mmRenderAdvancedPreviews(realm){
+  const st=MM.state[realm];if(!st)return;
+  const g=realm==="global";
+  const p=mmEffPfx(realm);
+  const s1=document.getElementById(g?"mm-fb-g":"mm-fb-c");
+  const s2=document.getElementById(g?"mm-fbr-g":"mm-fbr-c");
+  const pv1=document.getElementById(g?"mm-prev-g-fbm":"mm-prev-c-fbm");
+  const pv2=document.getElementById(g?"mm-prev-g-fbr":"mm-prev-c-fbr");
+  if(pv1)pv1.innerHTML=st.fbOn
+    ?tr("模型不在列表 → ")+"<b>"+esc(p+(s1&&s1.value||tr("（未选择）")))+"</b> "+tr("（请求转到这里）")
+    :tr("模型不在列表 → ")+"<b>404</b> "+tr("（默认，安全网关闭）");
+  if(pv2)pv2.innerHTML=st.fbrOn
+    ?tr("所有账号 403/5xx → ")+"<b>"+esc(s2&&s2.value||tr("（未选择）"))+"</b> "+tr("（重试 1 次，带 X-WB-Fallback-From 头）")
+    :tr("所有账号 403/5xx → ")+"<b>OFF</b> "+tr("（错误直接返回客户端）");
+}
+
+/* ---------- dirty / reset / yaml / save ---------- */
+function mmMarkDirty(realm){
+  MM.dirty[realm]=true;
+  const el=document.getElementById(realm==="global"?"mm-dirty-g":"mm-dirty-c");
+  if(el)el.textContent=tr("● 未保存更改");
+}
+function mmClearDirty(realm){
+  MM.dirty[realm]=false;
+  const el=document.getElementById(realm==="global"?"mm-dirty-g":"mm-dirty-c");
+  if(el)el.textContent=tr("已保存 ✓");
+  setTimeout(()=>{const e2=document.getElementById(realm==="global"?"mm-dirty-g":"mm-dirty-c");if(e2&&e2.textContent===tr("已保存 ✓"))e2.textContent="";},2500);
+}
+async function mmReset(realm){
+  try{
+    await api("/models/config?reset=1&realm="+encodeURIComponent(realm));
+    await mmGetConfig();
+    mmClearDirty(realm);
+    mmToast((realm==="global"?tr("Global"):tr("CN"))+tr(" 已恢复默认"));
+  }catch(e){ mmToast(tr("重置失败"),"err",e.message||String(e)); }
+}
+function mmYamlFor(realm){
+  const st=MM.state[realm];
+  const g=realm==="global";
+  const L=["plugins:","  workbuddy:"];
+  const dis=[...st.disabled].map(x=>'"'+x+'"').join(", ");
+  if(g){
+    L.push("    global_prefix_enabled: "+st.pfxOn);
+    if(st.pfxOn)L.push('    global_prefix_value: "'+(st.pfxVal||st.pfxDef)+'"   # '+tr("空 = 默认 ")+MM_DEFAULT_PFX.global);
+    L.push("    disabled_models: ["+dis+"]");
+    L.push("    fallback_enabled: "+st.fbOn);
+    if(st.fbOn)L.push('    fallback_model: "'+(st.fbModel||"")+'"    # missing-model fallback');
+    L.push("    retry_fallback_enabled: "+st.fbrOn);
+    if(st.fbrOn)L.push('    retry_fallback_model: "'+(st.fbrModel||"")+'"');
+  }else{
+    L.push("    cn_prefix_enabled: "+st.pfxOn);
+    if(st.pfxOn)L.push('    cn_prefix_value: "'+(st.pfxVal||st.pfxDef)+'"   # '+tr("空 = 默认 ")+MM_DEFAULT_PFX.cn);
+    L.push("    cn_disabled_models: ["+dis+"]");
+    L.push("    cn_fallback_enabled: "+st.fbOn);
+    if(st.fbOn)L.push('    cn_fallback_model: "'+(st.fbModel||"")+'"    # missing-model fallback');
+    L.push("    cn_retry_fallback_enabled: "+st.fbrOn);
+    if(st.fbrOn)L.push('    cn_retry_fallback_model: "'+(st.fbrModel||"")+'"');
+  }
+  return L.join("\n");
+}
+function mmCopyYAML(realm){
+  const txt=mmYamlFor(realm);
+  const ov=document.getElementById("mm-ov-"+realm);
+  let pre=ov.querySelector("pre.yaml");
+  if(!pre){pre=document.createElement("pre");pre.className="yaml";ov.querySelector(".mm-body").appendChild(pre);}
+  pre.style.display="block";pre.textContent=txt;
+  if(navigator.clipboard)navigator.clipboard.writeText(txt).then(()=>mmToast(tr("YAML 已复制到剪贴板")),()=>mmToast(tr("YAML 已显示 — 手动复制")));
+  else mmToast(tr("YAML 已显示 — 手动复制"));
+}
+async function mmSave(realm,scope){
+  const st=MM.state[realm];
+  const c=MM.cfg[realm]||{};
+  const body={
+    realm:realm,
+    scope:scope,
+    auth:scope==="acct"?(c.fetch_account||c.override_auth||(c.accounts||[])[0]||""):"",
+    state:{
+      disabled:[...st.disabled],
+      custom:st.custom,
+      prefix_enabled:st.pfxOn,
+      prefix_value:st.pfxOn?(st.pfxVal||""):"",
+      fallback_enabled:st.fbOn,
+      fallback_model:st.fbOn?st.fbModel:"",
+      retry_fallback_enabled:st.fbrOn,
+      retry_fallback_model:st.fbrOn?st.fbrModel:""
+    }
+  };
+  const g=realm==="global";
+  const bAll=document.getElementById(g?"mm-saveall-g":"mm-saveall-c");
+  if(bAll){bAll.disabled=true;}
+  try{
+    const d=await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(d&&d.error)throw new Error(d.error);
+    await mmGetConfig();
+    mmClearDirty(realm);
+    if(scope==="acct")mmToast(tr("已保存（仅此账号）— 层级：账号 > realm > 默认"));
+    else mmToast(tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）"));
+  }catch(e){ mmToast(tr("保存失败"),"err",e.message||String(e)); }
+  finally{ if(bAll)bAll.disabled=false; }
+}
+async function mmDeleteOverride(realm){
+  const c=MM.cfg[realm]||{};
+  try{
+    await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm,scope:"auth",auth:c.override_auth,remove:true})});
+    await mmGetConfig();
+    mmToast(tr("账号覆盖已删除 — 回到 realm 设置"));
+  }catch(e){ mmToast(tr("删除覆盖失败"),"err",e.message||String(e)); }
+}
+
+/* ---------- modal open/close/tab ---------- */
+function mmOpen(realm){
+  document.getElementById("mm-ov-"+realm).classList.add("open");
+  if(!MM.loaded){ mmGetConfig().catch(e=>mmFail(realm,e.message||String(e))); }
+  else{ mmRenderModels(realm);mmRenderPreview(realm);mmRenderAdvancedPreviews(realm); }
+}
+function mmClose(realm){
+  document.getElementById("mm-ov-"+realm).classList.remove("open");
+}
+function mmMaskClick(e,realm){ if(e.target===document.getElementById("mm-ov-"+realm)) mmClose(realm); }
+function mmTab(realm,tab,el){
+  MM.tab[realm]=tab;
+  document.querySelectorAll('#mm-ov-'+realm+' .mm-tabs .tab').forEach(t=>t.classList.toggle("active",t===el));
+  document.querySelectorAll('#mm-body-'+realm+' .tabpane').forEach(p=>p.style.display=p.dataset.pane===tab?"":"none");
+}
+
+/* ---------- update checker ---------- */
+function mmCmpVer(a,b){
+  const pa=String(a||"").replace(/^v/,"").split(/[.-]/).map(x=>isNaN(+x)?x:+x);
+  const pb=String(b||"").replace(/^v/,"").split(/[.-]/).map(x=>isNaN(+x)?x:+x);
+  for(let i=0;i<Math.max(pa.length,pb.length);i++){
+    const x=pa[i]??0,y=pb[i]??0;
+    if(x>y)return 1;if(x<y)return -1;
+  }
+  return 0;
+}
+function mmHandleUpdate(v){
+  MM.update=v||null;
+  const w=document.getElementById("uwidget");
+  if(!w)return;
+  const cur=v&&v.current, reg=v&&v.registry;
+  const latest=reg&&reg.version;
+  // Muncul HANYA jika registryVersion > buildVersion (dan tidak di-skip user)
+  if(!latest||!cur||mmCmpVer(latest,cur)<=0||(latest===MM.skipVersion)){w.style.display="none";return;}
+  w.style.display="block";
+  document.getElementById("ucur").textContent="v"+cur;
+  document.getElementById("ulatest").textContent="v"+latest;
+  document.getElementById("ulabel").textContent="⬇ v"+latest+tr(" 可用");
+  document.getElementById("ureltime").textContent=reg.released_at?esc(fmtAgo(reg.released_at)):"";
+  const ul=document.getElementById("uchangelog");
+  if(ul)ul.innerHTML=(reg.notes||[]).map(n=>"<li>"+esc(n)+"</li>").join("")||"";
+  document.getElementById("uchk").textContent=reg.checksum?("sha256:"+reg.checksum):"—";
+  const gh=document.getElementById("ugithub");
+  if(gh)gh.onclick=()=>{window.open(reg.url||"https://github.com/","_blank","noopener");};
+  const rel=document.getElementById("urelease");
+  if(rel)rel.onclick=(e)=>{e.preventDefault();window.open(reg.url||"https://github.com/","_blank","noopener");};
+  const lc=document.getElementById("ulastcheck");
+  if(lc)lc.textContent=tr("上次检查：")+(v.checked_at?esc(fmtAgo(v.checked_at)):"—")+tr("（每 6 小时自动）");
+}
+async function mmCheckUpdate(manual){
+  try{
+    const d=await api("/update/check");
+    if(d&&d.error)return;
+    d.current=d.current||(MM.update&&MM.update.current);
+    mmHandleUpdate(d);
+    if(manual){
+      const w=document.getElementById("uwidget");
+      if(w&&w.style.display==="none")mmToast(tr("已是最新版本"));
+    }
+  }catch(e){ /* silent fail */ }
+}
+// Skip version: sembunyikan badge sampai versi berikutnya.
+document.getElementById("uskip").addEventListener("click",e=>{
+  e.preventDefault();
+  const v=MM.update&&MM.update.registry&&MM.update.registry.version;
+  if(v){
+    MM.skipVersion=v;
+    try{localStorage.setItem("workbuddy-update-skip",v)}catch(_){}
+    document.getElementById("uwidget").style.display="none";
+    mmToast(tr("已跳过 v")+v+tr(" — 通知会在下个版本回来"));
+  }
+});
+document.getElementById("ubtn").addEventListener("click",e=>{e.stopPropagation();document.getElementById("upop").classList.toggle("open");});
+document.getElementById("urecheck").addEventListener("click",async e=>{
+  e.stopPropagation();const b=e.currentTarget;b.textContent="…";
+  await mmCheckUpdate(true);
+  b.textContent="↻";
+});
+document.addEventListener("click",e=>{ if(!e.target.closest("#upop")&&!e.target.closest("#ubtn"))document.getElementById("upop").classList.remove("open"); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){mmClose("global");mmClose("cn");document.getElementById("upop").classList.remove("open");} });
+// Cek update saat panel dibuka + tiap 6 jam (silent fail).
+window.addEventListener("load",()=>{
+  setTimeout(()=>mmCheckUpdate(false),1200);
+  setInterval(()=>{if(!document.hidden)mmCheckUpdate(false)},6*60*60*1000);
+});
+// Re-render modal setelah bahasa ganti (isi dinamis).
+(function(){
+  const old=applyPanelLanguage;
+  applyPanelLanguage=function(render){
+    old(render);
+    if(MM.loaded){
+      mmRenderAll();
+      const w=document.getElementById("uwidget");
+      if(w&&w.style.display!=="none"&&MM.update)mmHandleUpdate(MM.update);
+    }
+  };
+})();
 </script>
 </body>
 </html>
