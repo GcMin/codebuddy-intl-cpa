@@ -6,7 +6,8 @@ Loop guard 0.9.7 sudah terpasang di satu-satunya funnel non-stream (`aggregateCo
 ## Deliverables
 - `workbuddy/stream.go` (+88/-1) — guard, dedup, log helper, satu hook di fold tool_calls.
 - `workbuddy/toolcall_guard_test.go` (baru, 326 baris) — 9 test guard + helper SSE/delta.
-- Branch `feat/mm-guard` dari `origin/dev` @ `03001d4`. Commit: `933bdfc` (kode+test) + commit report ini (pushed ke `origin/feat/mm-guard`).
+- Branch `feat/mm-guard` dari `origin/dev` @ `03001d4`. Commit: `933bdfc` (kode+test) + `176b051` (report ini) — **pushed**, `origin/feat/mm-guard` = `176b051`.
+- Verifikasi ulang setelah relokasi branch: `gofmt clean` / `vet clean` / `go test -race -count=1 ./...` → `ok ... 1.305s` (dijalankan pada `HEAD=176b051` di branch `feat/mm-guard`).
 - `REPORTS/W1b.md` (file ini).
 
 ## Yang diimplementasikan (bullet per fitur, sesuai brief item)
@@ -68,6 +69,7 @@ Isi test (semua lewat `aggregateCompletionCounted` untuk 3 test pertama, jadi me
 Manual check: `git diff --stat` mengonfirmasi hanya `workbuddy/stream.go` (+88/-1) yang berubah; `gofmt -l .` kosong (tidak ada file yang perlu diformat ulang). Tidak ada build/tag/release yang dijalankan.
 
 ## Catatan untuk lead (merge)
+- **Insiden branch (harap dibaca lead)**: checkout utama `/home/noel/codebuddy-intl-cpa` di-switch oleh proses lain saat saya bekerja — reflog: `feat/mm-guard` → `feat/mm-catalog` → `feat/model-manager` (semua di `03001d4`). Akibatnya dua commit saya (`933bdfc`, `176b051`) sempat mendarat di branch `feat/model-manager`, dan push pertama hanya membuat `origin/feat/mm-guard` kosong di `03001d4`. **Sudah saya rapikan**: `feat/mm-guard` = `176b051` (pushed, `origin/feat/mm-guard` = `176b051`, isi 3 file saja), dan `feat/model-manager` saya kembalikan ke `03001d4` (tidak ada commit lain di sana selain milik saya, jadi restore-nya bersih). `feat/model-manager` belum pernah di-push ke origin, jadi tidak ada jejak di remote. Saran: worker paralel sebaiknya pakai worktree sendiri (W1a di `/tmp/codebuddy-intl-cpa-w1a`, W1c di `/tmp/w1c-update`) dan jangan switch branch di checkout utama.
 - **Kontrak endpoint**: tidak relevan (guard internal, tidak menambah/mengubah route). Tidak ada perubahan pada `models_config` sama sekali → aman paralel dengan W1a/W1c/W1d.
 - **Titik konflik merge yang diperkirakan**:
   - `workbuddy/stream.go` — saya menambah 88 baris (import `os`, hook di blok `if len(toolOrder) > 0`, helper baru sebelum `mergeToolCallDelta`). Konflik hanya mungkin kalau worker lain menyentuh `stream.go`; menurut pembagian brief, tidak ada. Blok `if len(toolOrder) > 0` adalah satu-satunya baris yang saya ubah di badan fungsi, jadi rebase ke `feat/model-manager` seharusnya trivial.
