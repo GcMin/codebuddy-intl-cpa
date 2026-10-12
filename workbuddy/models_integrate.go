@@ -257,6 +257,38 @@ func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.
 	return out
 }
 
+// mmFilterDisabled removes models the user turned off in the Model Manager
+// (realm layer resolved for this auth). Strips the emitted prefix before the
+// lookup because the disabled list stores bare catalog ids.
+func mmFilterDisabled(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
+	st := effectiveSettings(realm, "")
+	if len(st.Disabled) == 0 {
+		return models
+	}
+	off := make(map[string]struct{}, len(st.Disabled))
+	for _, id := range st.Disabled {
+		off[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
+	}
+	out := make([]pluginapi.ModelInfo, 0, len(models))
+	for _, m := range models {
+		id := strings.ToLower(strings.TrimSpace(m.ID))
+		// compare bare and prefixed forms so emission prefix never hides the rule
+		if _, hit := off[id]; hit {
+			continue
+		}
+		for pfx := range map[string]struct{}{"cb/": {}, "cn/": {}} {
+			if strings.HasPrefix(id, pfx) {
+				if _, hit2 := off[strings.TrimPrefix(id, pfx)]; hit2 {
+					goto next
+				}
+			}
+		}
+		out = append(out, m)
+	next:
+	}
+	return out
+}
+
 // mmRealmForAuth resolves the realm of the auth behind a storage JSON.
 func mmRealmForAuth(storageJSON []byte) string {
 	if sa, err := parseStored(storageJSON); err == nil {

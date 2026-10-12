@@ -553,8 +553,8 @@ func handleModelStatic(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	cacheModelAliases(req.Host)
-	models := wbModels()
-	models = append(models, applyDynamicPrefix(wbCNModels(), realmCN)...)
+	models := mmFilterDisabled(wbModels(), realmGlobal)
+	models = append(models, applyDynamicPrefix(mmFilterDisabled(wbCNModels(), realmCN), realmCN)...)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
@@ -584,6 +584,7 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 			models = append(models, m)
 		}
 	}
+	models = mmFilterDisabled(models, realm)
 	models = applyDynamicPrefix(models, realm)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
