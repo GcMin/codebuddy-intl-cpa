@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.9.7
+
+### Model Manager (Global / CN)
+
+- New panel popup per realm — ⚙ Global Models / ⚙ CN Models in the toolbar.
+  Model list is the union of the upstream catalog (`/v2/enterprises/personal/models`
+  ∪ `/v3/config` with the WorkBuddy client UA) and the plugin static catalog:
+  fetch-all by default, uncheck to hide (`disabled_models`). Free (x0.00) models
+  pinned to a dedicated section at the top; vendor sub-groups (DeepSeek, Gemini,
+  GLM, GPT, Grok, Hy, Kimi, …) cheapest-first; hidden-verified, stale (archived
+  price, `~`), utility (default OFF) and custom models in separate groups.
+- Per-model live Test button: real chat completion via the selected account —
+  status, served model, tokens, credit, and the upstream error code (11102
+  retired / 11150 effort) shown as ground truth instead of catalog claims.
+- Per-realm prefix (toggle + value; CN default `cn/` on, Global default `cb/`
+  off) applied to emission and routing; ambiguity warning when a realm prefix
+  is disabled.
+- Advanced: missing-model fallback and retry-on-hard-error fallback (both
+  opt-in, off by default; retry marked with `X-WB-Fallback-From`).
+- Save scopes: all accounts of the realm or a single account override
+  (default → realm → account layering, persisted in the plugin state file
+  `workbuddy-state.json`, atomic writes). Reset to defaults per realm.
+- Removed the legacy `models` config field (declared since 0.9.2 but never
+  read — the Model Manager replaces it).
+
+### Tool-call loop guard
+
+- `guardToolCalls` in the completion fold: hard cap of 32 tool calls per
+  completion and exact-duplicate folding; floods (observed live: 1,014
+  `echo skip` calls from a corrupted upstream stream) now fail with a clean
+  `toolcall guard tripped: N folded to M` error instead of being forwarded.
+
+### Update checker
+
+- The panel shows an update badge (fixed top-left) when the GitHub release
+  registry publishes a newer version than the running plugin
+  (`releases/latest/download/registry.json`, 6-hour cache, silent fail,
+  per-version skip). Update points to the release page.
+
 ## 0.9.6
 
 ### Bilingual management panel (中文 / English)

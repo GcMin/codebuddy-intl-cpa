@@ -334,7 +334,7 @@ type registrationCapability struct {
 // normal release keeps the production defaults; -ldflags -X can label a test
 // binary without changing the provider/auth identifier (workbuddy).
 var (
-	version           = "0.9.6"
+	version           = "0.9.7"
 	pluginRouteID     = providerName
 	pluginDisplayName = "CodeBuddy Intl CPA"
 	pluginMenuName    = "CodeBuddy"
@@ -355,7 +355,6 @@ func wbRegistration() registration {
 				{Name: "lifecycle_auto", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Auto disable CN / delete Global when credits exhausted; re-enable CN after check-in restores credits (default true)."},
 				{Name: "token_keepalive", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable daily access-token refresh at 22:00 local time to prevent Keycloak offline-session expiry (default true)."},
 				{Name: "daily_bonus", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable the Global daily credit reward at 08:00/12:00/16:00/20:00 local time: reports one growth activity event so each Global account earns its 30-credit daily Bonus Pack. Idempotent per account per day (default true)."},
-				{Name: "models", Type: pluginapi.ConfigFieldTypeArray, Description: "Optional model list. Each item can have id, name, alias, context, max_tokens, enabled, reasoning."},
 				{Name: "scheduler_mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{schedulerModeOff, schedulerModeCredits}, Description: "Multi-account selection: off (defer to built-in, default) or credits (pick highest remaining). WARNING: when off + lifecycle_auto=false, exhausted accounts may still be routed — enable lifecycle_auto or set scheduler_mode=credits."},
 				{Name: "usage_report_url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional override of CPAMP usage import URL (default http://cpa-manager-plus:18317/v0/management/usage/import; also env USAGE_REPORT_URL)."},
 				{Name: "usage_report_key", Type: pluginapi.ConfigFieldTypeString, Description: "Optional CPAMP admin key override. Prefer auto-detect from env CPAMP_ADMIN_KEY / USAGE_REPORT_KEY or secret file /run/secrets/cpamp_admin_key."},
