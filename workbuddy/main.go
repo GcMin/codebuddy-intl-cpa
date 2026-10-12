@@ -334,7 +334,7 @@ type registrationCapability struct {
 // normal release keeps the production defaults; -ldflags -X can label a test
 // binary without changing the provider/auth identifier (workbuddy).
 var (
-	version           = "0.9.4"
+	version           = "0.9.5"
 	pluginRouteID     = providerName
 	pluginDisplayName = "CodeBuddy Intl CPA"
 	pluginMenuName    = "CodeBuddy"
@@ -391,6 +391,16 @@ var dynamicModelsCache struct {
 	sync.RWMutex
 	byKey map[string]dynamicModelsCacheEntry
 }
+
+// dynamicModelCall is an in-flight upstream model discovery for one cache key.
+// Concurrent callers for the same account wait on the same call instead of
+// fanning out duplicate /models requests to CodeBuddy (thundering herd).
+type dynamicModelCall struct {
+	done   chan struct{}
+	models []pluginapi.ModelInfo
+}
+
+var dynamicModelFlights sync.Map // cache key (string) -> *dynamicModelCall
 
 //
 // CPA applies oauth-model-alias to the models this plugin registers, so the

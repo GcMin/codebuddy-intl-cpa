@@ -186,7 +186,7 @@ func storeDynamicModels(key string, models []pluginapi.ModelInfo) {
 	dynamicModelsCache.Unlock()
 }
 
-func fetchDynamicModelsFromStorage(authID string, storageJSON []byte) []pluginapi.ModelInfo {
+func fetchDynamicModelsFromStorage(authID string, storageJSON []byte) (models []pluginapi.ModelInfo) {
 	key := dynamicModelsCacheKey(authID, storageJSON)
 	if models, ok := cachedDynamicModels(key); ok {
 		return models
@@ -200,12 +200,33 @@ func fetchDynamicModelsFromStorage(authID string, storageJSON []byte) []pluginap
 	if accessToken == "" {
 		return fallbackModelsForAuth(storageJSON)
 	}
-	if dyn, err := callModelsAPI(accessToken); err == nil && len(dyn) > 0 {
+	// Collapse concurrent discoveries for the same credential into a single
+	// upstream call: the first caller fetches, the rest wait for its result.
+	call := &dynamicModelCall{done: make(chan struct{})}
+	if actual, loaded := dynamicModelFlights.LoadOrStore(key, call); loaded {
+		other := actual.(*dynamicModelCall)
+		<-other.done
+		if len(other.models) > 0 {
+			return cloneModelInfos(other.models)
+		}
+		// Leader failed and left no result; fall through to retry here.
+	} else {
+		defer func() {
+			call.models = models
+			close(call.done)
+			dynamicModelFlights.Delete(key)
+		}()
+	}
+	// Indirection seam for tests: swap to count/fake upstream discovery calls.
+	dyn, err := dynamicModelsFetchFn(accessToken)
+	if err == nil && len(dyn) > 0 {
 		storeDynamicModels(key, dyn)
 		return cloneModelInfos(dyn)
 	}
 	return fallbackModelsForAuth(storageJSON)
 }
+
+var dynamicModelsFetchFn = callModelsAPI
 
 // fetchDynamicModels calls the CodeBuddy API to get the latest model list.
 // Falls back to the hardcoded list on any error.

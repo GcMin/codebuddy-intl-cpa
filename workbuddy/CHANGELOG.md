@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.5
+
+### Model discovery singleflight
+
+- `models.go`, `main.go` — collapse concurrent dynamic model discovery for the
+  same credential into a single upstream call. Previously, N simultaneous
+  `/models` queries for one account fanned out N upstream requests
+  (thundering herd); now the first caller fetches while the rest wait for the
+  shared result. Waiters retry independently when the leader fails, so a
+  transient upstream error is not propagated to every caller.
+- Adapted from PR #1 by @oligeeklaphake (inflight dedup with waiter retry);
+  reworked to keep the existing per-account cache key (`realm:auth:<id>`,)
+  which stays stable across token refreshes.
+- `models_singleflight_test.go` — regression tests: single upstream call under
+  concurrency, leader-failure retry, per-account cache isolation, realm-scoped
+  keys, and flight cleanup.
+
 ## 0.9.4
 
 ### Panel usage fix
