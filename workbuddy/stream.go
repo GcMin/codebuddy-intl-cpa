@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -417,7 +418,14 @@ func aggregateCompletionCounted(r io.Reader, model string) ([]byte, bool, error)
 		for _, idx := range toolOrder {
 			calls = append(calls, toolCalls[idx])
 		}
-		message["tool_calls"] = calls
+		// Loop guard (0.9.7): a runaway upstream can fold thousands of
+		// tool-call deltas into one completion. Refuse it loudly instead of
+		// handing the host a truncated/looping payload.
+		guarded, guardErr := guardToolCalls(calls)
+		if guardErr != nil {
+			return nil, sawData, guardErr
+		}
+		message["tool_calls"] = guarded
 	}
 	if created == 0 {
 		created = time.Now().Unix()
@@ -441,6 +449,85 @@ func aggregateCompletionCounted(r io.Reader, model string) ([]byte, bool, error)
 		return nil, sawData, err
 	}
 	return out, sawData, nil
+}
+
+// maxToolCallsPerCompletion bounds how many tool calls a single folded
+// completion may carry. Anything above it is the runaway-loop signature seen
+// in production (1.014 "echo skip" calls in one completion), never a real
+// multi-tool turn.
+const maxToolCallsPerCompletion = 32
+
+// guardLogWriter receives loop-guard diagnostics. Tests swap it for a buffer;
+// production writes to stderr, which the CPA host captures with the plugin
+// logs. The plugin has no host log RPC, so stderr is the only channel.
+var guardLogWriter io.Writer = os.Stderr
+
+// guardLogf writes one guard diagnostic line.
+func guardLogf(format string, args ...any) {
+	if guardLogWriter == nil {
+		return
+	}
+	fmt.Fprintf(guardLogWriter, "[workbuddy] "+format+"\n", args...)
+}
+
+// guardToolCalls validates the merged tool calls of one completion before they
+// are emitted. Exact duplicates (same id, name and arguments) are folded into a
+// single call, and the completion is capped at maxToolCallsPerCompletion.
+//
+// A completion that arrived with more call deltas than the cap is rejected with
+// an error instead of being silently truncated: the host discards the payload
+// when the plugin returns an error, so the client sees a clean failure rather
+// than a partial tool loop. The cap is checked against the raw delta count, so
+// an exact-duplicate storm cannot mask itself by folding down to a handful of
+// calls.
+func guardToolCalls(calls []map[string]any) ([]map[string]any, error) {
+	total := len(calls)
+	folded := foldDuplicateToolCalls(calls)
+	if total > maxToolCallsPerCompletion || len(folded) > maxToolCallsPerCompletion {
+		guardLogf("toolcall guard tripped: %d folded to %d", total, len(folded))
+		return nil, fmt.Errorf("toolcall guard: %d tool calls in one completion (limit %d, %d after folding exact duplicates)", total, maxToolCallsPerCompletion, len(folded))
+	}
+	if len(folded) != total {
+		guardLogf("toolcall guard tripped: %d folded to %d", total, len(folded))
+	}
+	return folded, nil
+}
+
+// foldDuplicateToolCalls drops repeated calls, keeping the first occurrence in
+// order. Two calls are duplicates only when id, function.name and
+// function.arguments all match AND the id is non-empty: a call without an id
+// cannot be proven to be the same call, so it is always kept (the cap still
+// bounds it). This keeps legitimately repeated calls (two identical reads,
+// distinct ids) intact.
+func foldDuplicateToolCalls(calls []map[string]any) []map[string]any {
+	seen := make(map[string]struct{}, len(calls))
+	folded := make([]map[string]any, 0, len(calls))
+	for _, call := range calls {
+		key, ok := toolCallIdentity(call)
+		if !ok {
+			folded = append(folded, call)
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		folded = append(folded, call)
+	}
+	return folded
+}
+
+// toolCallIdentity builds the duplicate key for one merged call. ok is false
+// when the call carries no id, meaning it can never be treated as a duplicate.
+func toolCallIdentity(call map[string]any) (string, bool) {
+	id, _ := call["id"].(string)
+	if strings.TrimSpace(id) == "" {
+		return "", false
+	}
+	fn, _ := call["function"].(map[string]any)
+	name, _ := fn["name"].(string)
+	args, _ := fn["arguments"].(string)
+	return id + "\x00" + name + "\x00" + args, true
 }
 
 // mergeToolCallDelta folds one streaming tool_call fragment into the merged
