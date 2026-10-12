@@ -160,6 +160,9 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodGet, Path: base + "/usage/summary", Description: "Per-account usage summary (last/today/all credit + requests)."},
 			{Method: http.MethodGet, Path: base + "/models/config", Description: "Model Manager catalog: static + upstream (UA WorkBuddy) models per realm with the effective settings (layering default → realm → account). Query: realm, fetch_account, reset=1."},
 			{Method: http.MethodPost, Path: base + "/models/config", Description: "Save Model Manager settings (body: {realm, scope:all|acct, auth, state{...}, remove})."},
+			{Method: http.MethodPost, Path: base + "/models/refresh", Description: "Re-fetch the upstream model catalog for every account in the realm (body: {realm}). Cheap console GETs, no chat credits."},
+			{Method: http.MethodPost, Path: base + "/models/test", Description: "Live-test one model against the upstream with the selected account (body: {realm, auth, model}). Returns status, served model, tokens, credit."},
+			{Method: http.MethodGet, Path: base + "/update/check", Description: "Plugin update status vs the GitHub release registry (query: refresh=1, seen=<ver>). Silent fail."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: pluginMenuName, Description: pluginPanelBrand + " dashboard: credits, check-in, plan, import."},
@@ -232,6 +235,12 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigGet(req)))
 	case req.Method == http.MethodPost && path == base+"/models/config":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigPost(req)))
+	case req.Method == http.MethodPost && path == base+"/models/refresh":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsRefresh(req)))
+	case req.Method == http.MethodPost && path == base+"/models/test":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsTest(req)))
+	case req.Method == http.MethodGet && path == base+"/update/check":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUpdateCheck(req)))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }
