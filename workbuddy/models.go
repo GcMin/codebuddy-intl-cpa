@@ -46,6 +46,79 @@ func wbModels() []pluginapi.ModelInfo {
 	}
 }
 
+// wbCNModels is the current CLI-visible CN catalog. The IDs are namespaced so
+// clients can select the CN realm explicitly while existing bare model IDs
+// keep their current routing behavior.
+func wbCNModels() []pluginapi.ModelInfo {
+	return []pluginapi.ModelInfo{
+		{ID: "auto", Name: "Auto", ContextLength: 256000, MaxCompletionTokens: 32768},
+		{ID: "hy4-preview", Name: "Hy4 Preview", ContextLength: 960000, MaxCompletionTokens: 64000},
+		{ID: "hy3", Name: "Hy3", ContextLength: 192000, MaxCompletionTokens: 64000},
+		{ID: "step-5-preview", Name: "Step-5 Preview", ContextLength: 1000000, MaxCompletionTokens: 64000},
+		{ID: "space-bunny", Name: "Space-Bunny", ContextLength: 1000000, MaxCompletionTokens: 128000},
+		{ID: "deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxCompletionTokens: 128000},
+		{ID: "glm-5.3", Name: "GLM-5.3", ContextLength: 1000000, MaxCompletionTokens: 64000},
+		{ID: "glm-5.3-flash", Name: "GLM-5.3 Flash", ContextLength: 1000000, MaxCompletionTokens: 131000},
+		{ID: "glm-5.2", Name: "GLM-5.2", ContextLength: 1000000, MaxCompletionTokens: 64000},
+		{ID: "glm-5.1", Name: "GLM-5.1", ContextLength: 200000, MaxCompletionTokens: 64000},
+		{ID: "glm-5v-turbo", Name: "GLM-5V Turbo", ContextLength: 200000, MaxCompletionTokens: 64000},
+		{ID: "kimi-k3-1", Name: "Kimi K3", ContextLength: 1000000, MaxCompletionTokens: 32000},
+		{ID: "kimi-k2.8-preview", Name: "Kimi K2.8 Preview", ContextLength: 1000000, MaxCompletionTokens: 64000},
+		{ID: "kimi-k2.7", Name: "Kimi K2.7 Code", ContextLength: 256000, MaxCompletionTokens: 32000},
+		{ID: "kimi-k2.6", Name: "Kimi K2.6", ContextLength: 256000, MaxCompletionTokens: 32000},
+		{ID: "minimax-m3", Name: "MiniMax M3", ContextLength: 512000, MaxCompletionTokens: 64000},
+		{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", ContextLength: 1000000, MaxCompletionTokens: 128000},
+	}
+}
+
+func prefixCNModels(models []pluginapi.ModelInfo) []pluginapi.ModelInfo {
+	out := cloneModelInfos(models)
+	for i := range out {
+		if !strings.HasPrefix(strings.ToLower(out[i].ID), "cn/") {
+			out[i].ID = "cn/" + out[i].ID
+		}
+		if !strings.HasPrefix(strings.ToLower(out[i].Name), "cn ") {
+			out[i].Name = "CN " + out[i].Name
+		}
+		out[i].OwnedBy = providerName
+		if len(out[i].SupportedGenerationMethods) == 0 {
+			out[i].SupportedGenerationMethods = []string{"chat"}
+		}
+	}
+	return out
+}
+
+func isCNModelID(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "cn/")
+}
+
+func stripCNModelPrefix(model string) (string, bool) {
+	model = strings.TrimSpace(model)
+	if len(model) < 3 || !strings.EqualFold(model[:3], "cn/") {
+		return model, false
+	}
+	return strings.TrimSpace(model[3:]), true
+}
+
+func authUsesGlobalModels(storageJSON []byte) bool {
+	if sa, err := parseStored(storageJSON); err == nil {
+		if isGlobalDomain(sa.Auth.Domain) || isGlobalToken(sa.Auth.AccessToken) {
+			return true
+		}
+	}
+	if token, ok := extractAccessToken(storageJSON); ok {
+		return isGlobalToken(token)
+	}
+	return false
+}
+
+func fallbackModelsForAuth(storageJSON []byte) []pluginapi.ModelInfo {
+	if authUsesGlobalModels(storageJSON) {
+		return wbModels()
+	}
+	return wbCNModels()
+}
+
 func cloneModelInfos(models []pluginapi.ModelInfo) []pluginapi.ModelInfo {
 	if len(models) == 0 {
 		return nil
@@ -125,13 +198,13 @@ func fetchDynamicModelsFromStorage(authID string, storageJSON []byte) []pluginap
 		}
 	}
 	if accessToken == "" {
-		return wbModels()
+		return fallbackModelsForAuth(storageJSON)
 	}
 	if dyn, err := callModelsAPI(accessToken); err == nil && len(dyn) > 0 {
 		storeDynamicModels(key, dyn)
 		return cloneModelInfos(dyn)
 	}
-	return wbModels()
+	return fallbackModelsForAuth(storageJSON)
 }
 
 // fetchDynamicModels calls the CodeBuddy API to get the latest model list.
@@ -342,6 +415,9 @@ func resolveUpstreamModel(model string, attributes map[string]string) string {
 	if m == "" {
 		return model
 	}
+	if upstreamModel, prefixed := stripCNModelPrefix(m); prefixed {
+		return upstreamModel
+	}
 	key := strings.ToLower(m)
 	if name, ok := parseModelAliasAttribute(attributes)[key]; ok {
 		return name
@@ -457,6 +533,7 @@ func handleModelStatic(raw []byte) ([]byte, error) {
 	}
 	cacheModelAliases(req.Host)
 	models := wbModels()
+	models = append(models, prefixCNModels(wbCNModels())...)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
@@ -472,6 +549,9 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 	// auth file carries a non-canonical provider string.
 	cacheModelAliases(req.Host)
 	models := fetchDynamicModelsFromStorage(req.AuthID, req.StorageJSON)
+	if !authUsesGlobalModels(req.StorageJSON) {
+		models = prefixCNModels(models)
+	}
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }

@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -80,6 +81,10 @@ func listAuthEntryDisabled(f pluginapi.HostAuthFileEntry) bool {
 		return true
 	}
 	return strings.EqualFold(strings.TrimSpace(f.Status), "disabled")
+}
+
+func isCNAuth(sa *storedAuth) bool {
+	return sa != nil && !isGlobalDomain(sa.Auth.Domain) && !isGlobalToken(sa.Auth.AccessToken)
 }
 
 // buildFailoverPool resolves the routed auth plus every other enabled
@@ -189,6 +194,78 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 		}
 	}
 	return pool
+}
+
+// buildRequestFailoverPool keeps the legacy route for bare model IDs. A cn/
+// model instead gets a CN-only candidate pool, so neither the routed account
+// nor a later 429 retry can send that request to CodeBuddy Global.
+func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) (*failoverPool, []byte, error) {
+	if !isCNModelID(model) {
+		return buildFailoverPool(routedAuthID), routedStorage, nil
+	}
+
+	var routedAuth *storedAuth
+	if len(routedStorage) > 0 {
+		routedAuth, _ = parseStored(routedStorage)
+	}
+	files, err := loadAuthList()
+	if err != nil {
+		if isCNAuth(routedAuth) {
+			return &failoverPool{Primary: &failoverCandidate{AuthID: routedAuthID, Auth: routedAuth}}, routedStorage, nil
+		}
+		return nil, nil, fmt.Errorf("cannot find a CN CodeBuddy account for model %q: %w", model, err)
+	}
+
+	type eligible struct {
+		file pluginapi.HostAuthFileEntry
+		cand *failoverCandidate
+	}
+	var candidates []eligible
+	for _, f := range files {
+		if listAuthEntryDisabled(f) || f.AuthIndex == "" || isAuthOnCooldown(f.AuthIndex) {
+			continue
+		}
+		sa, getErr := authGetSource(f.AuthIndex)
+		if getErr != nil || !isCNAuth(sa) {
+			continue
+		}
+		candidates = append(candidates, eligible{
+			file: f,
+			cand: &failoverCandidate{AuthID: f.AuthIndex, Auth: sa},
+		})
+	}
+	if len(candidates) == 0 {
+		return nil, nil, fmt.Errorf("no enabled CN CodeBuddy account is available for model %q", model)
+	}
+
+	selected := 0
+	activeID := getActiveAuthID()
+	routedName := ""
+	if routedAuthID != "" {
+		routedName = "workbuddy-" + routedAuthID + ".json"
+	}
+	for i, c := range candidates {
+		f := c.file
+		if routedAuthID != "" && (f.AuthIndex == routedAuthID || f.ID == routedAuthID || f.Name == routedAuthID || listEntryMatchesUID(f, routedAuthID, routedName)) {
+			selected = i
+			break
+		}
+		if activeID != "" && (f.ID == activeID || f.AuthIndex == activeID || f.Name == activeID) {
+			selected = i
+		}
+	}
+
+	pool := &failoverPool{Primary: candidates[selected].cand}
+	for i, c := range candidates {
+		if i != selected {
+			pool.Others = append(pool.Others, c.cand)
+		}
+	}
+	storage, err := json.Marshal(pool.Primary.Auth)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot prepare selected CN account: %w", err)
+	}
+	return pool, storage, nil
 }
 
 // ordered dereferences the pool into attemptable candidates. The primary is

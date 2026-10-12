@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.9.3
+
+### CN-prefixed model routing
+
+- `models.go` — expose the CN account model catalog under `cn/<model>` and
+  keep CN and Global dynamic model caches separate.
+- `retry.go`, `main.go` — route `cn/<model>` requests and their 429 failover
+  candidates through enabled CN accounts only; bare model IDs retain the
+  existing account routing behavior.
+- `README.md` — document `cn/` IDs and the routing guarantee.
 
 ### Reliability and safety hardening
 
@@ -9,6 +18,7 @@
 - Keep check-in, trial, and growth-report mutations one-shot; restrict billing retries to transient HTTP 5xx operations.
 - Harden failover realm filtering, cooldown aliases, runtime/core identity attribution, and host HTTP callback error handling without replaying ambiguous POSTs.
 - Isolate dynamic model discovery per account/realm and honor scheduler toggles for check-in, keepalive, and daily bonus.
+
 
 ## 0.8.2
 

@@ -757,6 +757,14 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
+	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+	if err != nil {
+		return nil, err
+	}
+	req.StorageJSON = routedStorage
+	if isCNModelID(req.Model) && pool.Primary != nil {
+		req.AuthID = pool.Primary.AuthID
+	}
 	sa, err := parseStored(req.StorageJSON)
 	if err != nil {
 		return nil, err
@@ -779,7 +787,6 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	// same request is retried on the next eligible enabled account. One usage
 	// record per inbound request (success or final failure); the CPAMP publish
 	// follows the same single-line rule.
-	pool := buildFailoverPool(req.AuthID, req.StorageJSON)
 	cands := pool.ordered(req.StorageJSON)
 	var completion []byte
 	fin := runFailover(cands, func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
@@ -826,6 +833,14 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
+	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+	if err != nil {
+		return nil, err
+	}
+	req.StorageJSON = routedStorage
+	if isCNModelID(req.Model) && pool.Primary != nil {
+		req.AuthID = pool.Primary.AuthID
+	}
 	sa, err := parseStored(req.StorageJSON)
 	if err != nil {
 		return nil, err
@@ -848,7 +863,6 @@ func handleExecStream(raw []byte) ([]byte, error) {
 
 	// No async stream id → fall back to synchronous chunk collection.
 	if req.StreamID == "" {
-		pool := buildFailoverPool(req.AuthID, req.StorageJSON)
 		cands := pool.ordered(req.StorageJSON)
 		collector := &sseUsageCollector{}
 		var chunks []pluginapi.ExecutorStreamChunk
@@ -912,7 +926,6 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	// client disconnects — otherwise the pump keeps reading a dead upstream until
 	// sharedHTTPClient's 120s timeout, holding a pool slot the whole time.
 	ctx, cancel := context.WithCancel(context.Background())
-	pool := buildFailoverPool(req.AuthID, req.StorageJSON)
 	cands := pool.ordered(req.StorageJSON)
 	go pumpWithFailover(ctx, cancel, req, body, upstreamModel, authUID, started, sseFramed, cands)
 	return okEnvelope(streamResponse{Headers: headers})
