@@ -436,7 +436,7 @@ func resolveUpstreamModel(model string, attributes map[string]string) string {
 	if m == "" {
 		return model
 	}
-	if upstreamModel, prefixed := stripCNModelPrefix(m); prefixed {
+	if upstreamModel, prefixed := stripDynamicPrefix(m, mmRealmHintFromAttributes(attributes)); prefixed {
 		return upstreamModel
 	}
 	key := strings.ToLower(m)
@@ -554,7 +554,7 @@ func handleModelStatic(raw []byte) ([]byte, error) {
 	}
 	cacheModelAliases(req.Host)
 	models := wbModels()
-	models = append(models, prefixCNModels(wbCNModels())...)
+	models = append(models, applyDynamicPrefix(wbCNModels(), realmCN)...)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
@@ -570,9 +570,21 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 	// auth file carries a non-canonical provider string.
 	cacheModelAliases(req.Host)
 	models := fetchDynamicModelsFromStorage(req.AuthID, req.StorageJSON)
-	if !authUsesGlobalModels(req.StorageJSON) {
-		models = prefixCNModels(models)
+	// Model Manager: dynamic per-realm prefix (cn/ cb/ custom / bare) replacing
+	// the hardcoded prefixCNModels; also union the Model Manager catalog so the
+	// hidden/static models stay visible to the client.
+	realm := mmRealmForAuth(req.StorageJSON)
+	extra := catalogModelInfos(realm)
+	seen := make(map[string]bool, len(models))
+	for _, m := range models {
+		seen[strings.ToLower(m.ID)] = true
 	}
+	for _, m := range extra {
+		if !seen[strings.ToLower(m.ID)] {
+			models = append(models, m)
+		}
+	}
+	models = applyDynamicPrefix(models, realm)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }

@@ -202,3 +202,104 @@ func truncateTestContent(s string, n int) string {
 	}
 	return s[:n] + "…"
 }
+
+// ---- Dynamic prefix emission + strip (Model Manager decision 4) ----
+//
+// The Model Manager prefix settings replace the hardcoded cn/ behaviour:
+// effectiveSettings(realm).Prefix{On,Val} decides whether the realm's models
+// are emitted with a prefix and which one (empty value + On = realm default:
+// cn/ for CN, cb/ for Global). Global default is OFF (bare IDs, the historical
+// behaviour), CN default is ON cn/.
+
+// mmEffectivePrefix returns the prefix string to emit for a realm ("" = bare).
+// On with an empty value = realm default (cn/ for CN, cb/ for Global).
+func mmEffectivePrefix(realm string) string {
+	p := effectiveSettings(realm, "").Prefix
+	if !p.On {
+		return ""
+	}
+	v := strings.TrimSpace(p.Val)
+	if v == "" {
+		return mmDefaultPrefix(realm)
+	}
+	if !strings.HasSuffix(v, "/") {
+		v += "/"
+	}
+	return v
+}
+
+// mmDefaultPrefix is the per-realm default prefix (used when On && Val == "").
+func mmDefaultPrefix(realm string) string {
+	if realm == realmCN {
+		return "cn/"
+	}
+	return "cb/"
+}
+
+// applyDynamicPrefix prefixes/normalizes the emitted model IDs for one realm.
+// Replaces prefixCNModels (hardcoded cn/) in the Model Manager flow.
+func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
+	pfx := mmEffectivePrefix(realm)
+	out := make([]pluginapi.ModelInfo, 0, len(models))
+	for _, m := range models {
+		if pfx == "" {
+			// bare: strip a leading default prefix if the id carries one
+			if strings.HasPrefix(strings.ToLower(m.ID), "cn/") {
+				m.ID = strings.TrimSpace(m.ID[3:])
+			}
+		} else {
+			if !strings.HasPrefix(strings.ToLower(m.ID), strings.ToLower(pfx)) {
+				m.ID = pfx + m.ID
+			}
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// mmRealmForAuth resolves the realm of the auth behind a storage JSON.
+func mmRealmForAuth(storageJSON []byte) string {
+	if sa, err := parseStored(storageJSON); err == nil {
+		return accountRegion(sa)
+	}
+	if authUsesGlobalModels(storageJSON) {
+		return realmGlobal
+	}
+	return realmCN
+}
+
+// stripDynamicPrefix removes whatever prefix the realm currently emits from a
+// requested model id (client-facing alias → upstream id). Falls back to the
+// hardcoded cn/ strip when the requested prefix matches the other realm's
+// default (requesting cn/x from the Global realm still resolves x).
+func stripDynamicPrefix(model string, realm string) (string, bool) {
+	m := strings.TrimSpace(model)
+	low := strings.ToLower(m)
+	// current realm's own prefix
+	if pfx := mmEffectivePrefix(realm); pfx != "" && strings.HasPrefix(low, strings.ToLower(pfx)) {
+		return strings.TrimSpace(m[len(pfx):]), true
+	}
+	// the other realm's default prefix (cn/ or cb/) still strips — keeps old
+	// client configs (cn/glm-5.3) working after a prefix change.
+	for _, other := range []string{"cn/", "cb/"} {
+		if !strings.EqualFold(other, mmEffectivePrefix(realm)) && strings.HasPrefix(low, other) {
+			return strings.TrimSpace(m[len(other):]), true
+		}
+	}
+	return m, false
+}
+
+// mmRealmHintFromAttributes guesses the realm for a request from its routing
+// attributes (falls back to the requested id itself when unavailable).
+func mmRealmHintFromAttributes(attributes map[string]string) string {
+	for _, v := range attributes {
+		lv := strings.ToLower(v)
+		if strings.Contains(lv, "global") || strings.Contains(lv, "intl") || strings.Contains(lv, "cb/") {
+			return realmGlobal
+		}
+		if strings.Contains(lv, "cn/") {
+			return realmCN
+		}
+	}
+	return realmCN
+}
