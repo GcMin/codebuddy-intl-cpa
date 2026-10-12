@@ -1792,6 +1792,7 @@ if(getKey()){
 
 const MM_API = API; // sama base endpoint plugin
 const MM = {
+  fetchAcct: {},   // realm -> akun fetch terpilih (sticky anti snap-back)
   cfg: { global: null, cn: null },   // snapshot terakhir dari GET /models/config
   state: { global: null, cn: null }, // state yang diedit user
   dirty: { global: false, cn: false },
@@ -1810,7 +1811,15 @@ function mmFail(realm, err){
 }
 
 async function mmGetConfig(){
-  const d = await api("/models/config");
+  // keep the chosen fetch account sticky: GET must carry it, otherwise the
+  // backend falls back to accounts[0] and the picker snaps back to the first
+  // account (bug: picking any account returned to the first one).
+  const q = [];
+  for(const r of ["global","cn"]){
+    const a = MM.fetchAcct && MM.fetchAcct[r];
+    if(a) q.push("fetch_account_"+r+"="+encodeURIComponent(a));
+  }
+  const d = await api("/models/config"+(q.length?("?"+q.join("&")):""));
   if(d && d.error) throw new Error(d.error);
   MM.cfg.global = (d && d.realms && d.realms.global) || null;
   MM.cfg.cn = (d && d.realms && d.realms.cn) || null;
@@ -1890,7 +1899,9 @@ async function mmChangeFetchAcct(realm){
   const g=realm==="global";
   const sel=document.getElementById(g?"mm-facct-g":"mm-facct-c");
   const acct=sel?sel.value:"";
-  try{ await api("/models/config?realm="+encodeURIComponent(realm)+"&fetch_account="+encodeURIComponent(acct)); await mmGetConfig(); }
+  MM.fetchAcct = MM.fetchAcct || {};
+  MM.fetchAcct[realm] = acct;   // sticky — mmGetConfig kirim ulang sebagai query
+  try{ await mmGetConfig(); }
   catch(e){ mmFail(realm, e.message||String(e)); }
 }
 async function mmRefetch(realm){

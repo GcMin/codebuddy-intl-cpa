@@ -72,9 +72,10 @@ func handleModelsRefresh(req pluginapi.ManagementRequest) map[string]any {
 //	this shape is 0.00–0.04 on the cheapest models, bounded by max_tokens.
 func handleModelsTest(req pluginapi.ManagementRequest) map[string]any {
 	var body struct {
-		Realm string `json:"realm"`
-		Auth  string `json:"auth"`
-		Model string `json:"model"`
+		Realm   string `json:"realm"`
+		Auth    string `json:"auth"`
+		Account string `json:"account"` // alias used by the panel (W2)
+		Model   string `json:"model"`
 	}
 	if len(req.Body) > 0 {
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -86,6 +87,9 @@ func handleModelsTest(req pluginapi.ManagementRequest) map[string]any {
 		return map[string]any{"error": "model is required"}
 	}
 	authID := strings.TrimSpace(body.Auth)
+	if authID == "" {
+		authID = strings.TrimSpace(body.Account)
+	}
 	if authID == "" {
 		return map[string]any{"error": "auth is required"}
 	}
