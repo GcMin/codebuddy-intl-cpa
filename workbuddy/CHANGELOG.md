@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.3
+
+### CN-prefixed model routing
+
+- `models.go` — expose the CN account model catalog under `cn/<model>` and
+  keep CN and Global dynamic model caches separate.
+- `retry.go`, `main.go` — route `cn/<model>` requests and their 429 failover
+  candidates through enabled CN accounts only; bare model IDs retain the
+  existing account routing behavior.
+- `README.md` — document `cn/` IDs and the routing guarantee.
+
 ## 0.8.2
 
 ### Concurrency + lifecycle hardening

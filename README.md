@@ -110,13 +110,21 @@ gpt-5.6-luna    claude-opus-5    gpt-5.6-sol     glm-5.3
 gpt-5.6-terra   deepseek-v4.1-flash   glm-5.3-flash   kimi-k3
 ```
 
-### 5. Global / Intl realm handling
+### 5. Explicit CodeBuddy CN models
+
+CN account model IDs are exposed with a `cn/` prefix, for example
+`cn/glm-5.3` or `cn/space-bunny`. The prefix is removed before the request reaches
+CodeBuddy. Requests using `cn/<model>` select an enabled CN account and retry
+only across CN accounts, even if CPA initially routed the request to a Global
+account. Bare model IDs keep the existing CPA routing behavior.
+
+### 6. Global / Intl realm handling
 
 Realm detection accepts both issuers (`workbuddy.ai` **and** `codebuddy.ai`), so Intl
 credentials route to the correct billing and chat hosts instead of being sent to the CN
 gateway (which answers a non-JSON 401 and surfaces as `parse failed: invalid character '<'`).
 
-### 6. Inherited from the original plugin
+### 7. Inherited from the original plugin
 
 Multi-account OAuth login, dynamic model list, chat executor, CN daily check-in, Global
 one-time 250-credit expert trial, credit lifecycle (disable CN / delete Global when
