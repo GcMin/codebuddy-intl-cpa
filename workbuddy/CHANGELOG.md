@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.4
+
+### Panel usage fix
+
+- `panel.html` — fix double-escaping in the usage table model cell: records with a
+  `cn/` alias rendered raw HTML (`<span class="muted">…</span>`) instead of the
+  intended muted alias. Model name is now escaped per part.
+
 ## 0.9.3
 
 ### CN-prefixed model routing

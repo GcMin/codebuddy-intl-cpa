@@ -1020,8 +1020,8 @@ async function loadUsage(){
       }else{
         tbody.innerHTML=recs.map(r=>{
           const fail=r.failed?"<span class=\"badge exhausted\" style=\"margin-left:6px\">fail</span>":"";
-          const model=(r.model||"")+(r.alias&&r.alias!==r.model?` <span class="muted">(${esc(r.alias)})</span>`:"");
-          return `<tr><td>${esc(fmtDT(r.timestamp))}</td><td>${esc(r.nickname||r.auth_index||"-")}${fail}</td><td>${esc(model)}</td><td class="num">${fmtTok(r.input_tokens)}</td><td class="num">${fmtTok(r.output_tokens)}</td><td class="num">${fmtTok(r.cache_read_tokens)} / ${fmtTok(r.cache_write_tokens)}</td><td class="num">${fmtTok(r.total_tokens)}</td><td class="num cr">${fmtCred(r.credit)}</td></tr>`;
+          const model=esc(r.model||"")+(r.alias&&r.alias!==r.model?` <span class="muted">(${esc(r.alias)})</span>`:"");
+          return `<tr><td>${esc(fmtDT(r.timestamp))}</td><td>${esc(r.nickname||r.auth_index||"-")}${fail}</td><td>${model}</td><td class="num">${fmtTok(r.input_tokens)}</td><td class="num">${fmtTok(r.output_tokens)}</td><td class="num">${fmtTok(r.cache_read_tokens)} / ${fmtTok(r.cache_write_tokens)}</td><td class="num">${fmtTok(r.total_tokens)}</td><td class="num cr">${fmtCred(r.credit)}</td></tr>`;
         }).join("");
       }
     }
