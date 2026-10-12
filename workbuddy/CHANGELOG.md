@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.6
+
+### Bilingual management panel (中文 / English)
+
+- `panel.html` — add a 中文 / English language selector to the management panel
+  (top-right). Initial language follows the browser; the choice persists in the
+  current browser. Switching re-renders account cards, credit summaries, usage
+  records, dialogs, and pending button states without issuing management
+  requests. Account names, model names, config field names, and upstream error
+  details keep their original values.
+- `README.zh-CN.md` — full Simplified Chinese guide (build, features, config).
+- Adapted from PR #2 by @oligeeklaphake, rebased onto the v0.9.5 tree with the
+  v0.9.4 model/alias escaping semantics restored in `renderUsageData`.
+- Panel is embedded via `go:embed`: rebuilding the plugin binary is required.
+
 ## 0.9.5
 
 ### Model discovery singleflight
