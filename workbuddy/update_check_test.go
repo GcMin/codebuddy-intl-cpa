@@ -219,7 +219,9 @@ func TestSeenVersionPersistence(t *testing.T) {
 }
 
 func TestHandleUpdateCheckQueryContract(t *testing.T) {
-	serveRegistry(t, http.StatusOK, registryJSON("0.9.7"))
+	// 0.9.8: must always be newer than the built version (0.9.7+) so this test
+	// does not flip when the release tag catches up with the mock.
+	serveRegistry(t, http.StatusOK, registryJSON("0.9.8"))
 
 	c := newUpdateChecker()
 	oldChecker := defaultUpdateChecker
@@ -229,12 +231,12 @@ func TestHandleUpdateCheckQueryContract(t *testing.T) {
 	u, _ := url.Parse("/update/check?refresh=1")
 	req := pluginapi.ManagementRequest{Method: http.MethodGet, Path: "/update/check", Query: u.Query()}
 	resp := handleUpdateCheck(req)
-	if !resp.Available || resp.Latest != "0.9.7" {
+	if !resp.Available || resp.Latest != "0.9.8" {
 		t.Fatalf("refresh=1: %+v", resp)
 	}
 
 	// seen=0.9.7 records the skip; refresh=1 bypasses cache so Seen reflects it.
-	u2, _ := url.Parse("/update/check?refresh=1&seen=0.9.7")
+	u2, _ := url.Parse("/update/check?refresh=1&seen=0.9.8")
 	resp2 := handleUpdateCheck(pluginapi.ManagementRequest{Query: u2.Query()})
 	if !resp2.Seen {
 		t.Fatalf("seen= not honored: %+v", resp2)
