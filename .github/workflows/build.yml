@@ -45,9 +45,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Panel update contract regression tests
+      - name: Panel regression tests
         working-directory: .
-        run: node --test scripts/test-panel-update.cjs
+        run: node --test scripts/test-panel-*.cjs
       - name: Test
         run: go test ./...
       - name: Vet

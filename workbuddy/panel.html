@@ -441,12 +441,12 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <div class="tabpane" data-pane="prefix" style="display:none">
       <div class="pcard">
         <h3 data-i18n="模型前缀 — Global">模型前缀 — Global</h3>
-        <div class="desc" data-i18n="模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。">模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。</div>
+        <div class="desc" data-i18n="开启时默认使用 cb/。留空使用默认值，输入其他前缀（如 yes/）可自定义。">开启时默认使用 cb/。留空使用默认值，输入其他前缀（如 yes/）可自定义。</div>
         <div class="ptoggle">
           <div class="switch" id="mm-sw-g-pfx" onclick="mmTogglePrefix('global')"><div class="knob"></div></div>
           <label onclick="mmTogglePrefix('global')" data-i18n="启用前缀">启用前缀</label>
           <div class="pinput">
-            <input id="mm-pfx-g" placeholder="cb/" oninput="mmPrefixInput('global',this.value)">
+            <input id="mm-pfx-g" placeholder="cb/" aria-label="Global prefix" oninput="mmPrefixInput('global',this.value)" onblur="mmRenderPrefixUI('global')">
             <span class="def"><span data-i18n="默认">默认</span>: <code>cb/</code></span>
           </div>
         </div>
@@ -526,12 +526,12 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <div class="tabpane" data-pane="prefix" style="display:none">
       <div class="pcard">
         <h3 data-i18n="模型前缀 — CN">模型前缀 — CN</h3>
-        <div class="desc" data-i18n="模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。">模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。</div>
+        <div class="desc" data-i18n="开启时默认使用 cn/。留空使用默认值，输入其他前缀（如 yes/）可自定义。">开启时默认使用 cn/。留空使用默认值，输入其他前缀（如 yes/）可自定义。</div>
         <div class="ptoggle">
           <div class="switch" id="mm-sw-c-pfx" onclick="mmTogglePrefix('cn')"><div class="knob"></div></div>
           <label onclick="mmTogglePrefix('cn')" data-i18n="启用前缀">启用前缀</label>
           <div class="pinput">
-            <input id="mm-pfx-c" placeholder="cn/" oninput="mmPrefixInput('cn',this.value)">
+            <input id="mm-pfx-c" placeholder="cn/" aria-label="CN prefix" oninput="mmPrefixInput('cn',this.value)" onblur="mmRenderPrefixUI('cn')">
             <span class="def"><span data-i18n="默认">默认</span>: <code>cn/</code></span>
           </div>
         </div>
@@ -814,8 +814,8 @@ const PANEL_EN = {
   " 天前": "d ago",
   "模型前缀 — Global": "Model prefix — Global",
   "模型前缀 — CN": "Model prefix — CN",
-  "模型 Global 会以此前缀发给客户端（/v1/models 与路由）。开启但留空 = 用默认值。": "Global models are emitted with this prefix to the client (/v1/models & routing). Toggle ON empty = use default.",
-  "模型 CN 会以此前缀发给客户端（现在是硬编码 cn/）。开启但留空 = 用默认值。": "CN models are emitted with this prefix (currently hardcoded cn/). Toggle ON empty = use default.",
+  "开启时默认使用 cb/。留空使用默认值，输入其他前缀（如 yes/）可自定义。": "Uses cb/ by default when enabled. Leave it blank for the default, or enter a custom prefix (e.g. yes/).",
+  "开启时默认使用 cn/。留空使用默认值，输入其他前缀（如 yes/）可自定义。": "Uses cn/ by default when enabled. Leave it blank for the default, or enter a custom prefix (e.g. yes/).",
   "启用前缀": "Use prefix",
   "默认": "default",
   "客户端看到：": "Client sees: ",
@@ -2093,22 +2093,30 @@ function mmRenderPrefixUI(realm){
   const sw=document.getElementById(g?"mm-sw-g-pfx":"mm-sw-c-pfx");
   const inp=document.getElementById(g?"mm-pfx-g":"mm-pfx-c");
   if(sw)sw.classList.toggle("on",st.pfxOn);
-  if(inp&&inp.value!==st.pfxVal)inp.value=st.pfxVal;
+  if(inp){
+    // Display the effective default without turning an empty saved value into
+    // a custom override. While typing, oninput updates only state/preview;
+    // blur restores the visible default after the user clears the field.
+    const value=(st.pfxVal||"").trim()||(st.pfxOn?(st.pfxDef||MM_DEFAULT_PFX[realm]):"");
+    if(inp.value!==value)inp.value=value;
+    inp.disabled=!st.pfxOn;
+  }
 }
 function mmTogglePrefix(realm){
   const st=MM.state[realm];st.pfxOn=!st.pfxOn;
-  mmMarkDirty(realm);mmRenderPrefixUI(realm);mmRenderPreview(realm);
+  mmMarkDirty(realm);mmRenderPrefixUI(realm);mmRenderPreview(realm);mmRenderAdvancedPreviews(realm);
 }
 function mmPrefixInput(realm, val){
   const st=MM.state[realm];if(!st)return;
   st.pfxVal=(val||"").trim();
-  mmMarkDirty(realm);mmRenderPreview(realm);
+  mmMarkDirty(realm);mmRenderPreview(realm);mmRenderAdvancedPreviews(realm);
 }
 function mmEffPfx(realm){
   const st=MM.state[realm];
   if(!st.pfxOn)return "";
-  const v=(st.pfxVal||"").trim().replace(/\/?$/, "/");
-  return v||st.pfxDef||MM_DEFAULT_PFX[realm];
+  // Choose the default BEFORE adding a slash; empty.replace(...) yields '/'.
+  const v=(st.pfxVal||"").trim()||st.pfxDef||MM_DEFAULT_PFX[realm];
+  return v.endsWith("/")?v:v+"/";
 }
 function mmRenderPreview(realm){
   const st=MM.state[realm];if(!st)return;
