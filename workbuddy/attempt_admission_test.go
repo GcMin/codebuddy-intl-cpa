@@ -278,6 +278,7 @@ func TestBusyFallbackRealExecutorPaths(t *testing.T) {
 	for _, mode := range []string{"nonstream", "syncstream", "asyncstream"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+			resetChatSessions(t)
 			cs := exhaustedCandidates(t)
 			for _, c := range cs {
 				c.Auth.Auth.AccessToken = "fake-test-token"
@@ -307,7 +308,7 @@ func TestBusyFallbackRealExecutorPaths(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":1,\"credit\":0.01}}\n\ndata: [DONE]\n\n"))}, nil
 			})
-			req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: "cb/gpt-6.1-sol", AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cs[0].Auth), Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
+			req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: "cb/gpt-6.1-sol", AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cs[0].Auth), Headers: http.Header{"Authorization": []string{"Bearer fake-client-key"}}, Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
 			raw, _ := json.Marshal(req)
 			var err error
 			switch mode {
@@ -325,9 +326,34 @@ func TestBusyFallbackRealExecutorPaths(t *testing.T) {
 			if err != nil || calls != 1 {
 				t.Fatalf("executor fallback: calls=%d err=%v", calls, err)
 			}
+			// The host can still route A on the next turn. After capacity
+			// overflow the plugin must keep this session on B even when A is
+			// free, not bounce the cache back to A.
+			two()
+			one()
+			switch mode {
+			case "nonstream":
+				_, err = handleExecExecute(raw)
+			case "syncstream":
+				_, err = handleExecStream(raw)
+			default:
+				pool, storage, e := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+				if e != nil {
+					t.Fatal(e)
+				}
+				pumpWithFailover(t.Context(), nil, req, prepareUpstreamBody(req.Payload, nil, cs[0].Auth, "gpt-6.1-sol"), "gpt-6.1-sol", "uid-a", time.Now(), false, pool.ordered(storage))
+			}
+			if err != nil || calls != 2 {
+				t.Fatalf("next turn lost affinity: calls=%d err=%v", calls, err)
+			}
 			records := usageStore.ringSnapshot()
-			if len(records) != 1 || records[0].AuthID != "exhaust-b" || records[0].Failed || len(records[0].CacheTrace.Attempts) != 1 {
-				t.Fatalf("wrong accounting/attempts: %+v", records)
+			if len(records) != 2 {
+				t.Fatalf("wrong accounting count: %d", len(records))
+			}
+			for _, record := range records {
+				if record.AuthID != "exhaust-b" || record.Failed || len(record.CacheTrace.Attempts) != 1 {
+					t.Fatalf("wrong accounting/attempts after overflow: auth=%q failed=%v attempts=%d", record.AuthID, record.Failed, len(record.CacheTrace.Attempts))
+				}
 			}
 		})
 	}

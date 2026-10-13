@@ -801,7 +801,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	// follows the same single-line rule.
 	cands := pool.ordered(req.StorageJSON)
 	var completion []byte
-	fin := runFailover(cands, func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
+	fin := runFailoverForSession(cands, requestSessionKey(req, body, accountRegion(sa)), func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
 		out, err := upstreamAttempt(context.Background(), body, req.Model, cand, trace)
 		completion = out // nil on error
 		return classifyNonStream(out, err)
@@ -879,7 +879,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 		collector := &sseUsageCollector{}
 		var chunks []pluginapi.ExecutorStreamChunk
 		partial := false
-		fin := runFailover(cands, func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
+		fin := runFailoverForSession(cands, requestSessionKey(req.ExecutorRequest, body, accountRegion(sa)), func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
 			var statusCode int
 			var err error
 			chunks, statusCode, err = collectStreamAttempt(body, cand, sseFramed, collector, trace)

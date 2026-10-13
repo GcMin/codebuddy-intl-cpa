@@ -78,6 +78,14 @@
   aliases. Do not queue locally: when an account is busy, try another enabled
   same-realm account; if all are busy, fail fast without upstream I/O. A 30s
   local queue timeout behind a 51s request motivated removing the queue.
+- Soft session affinity (SuperApp-style sticky routing): a conversation stays
+  on its last executing account while a slot is free; when that account is
+  busy, the request moves to a free same-realm peer and the binding follows it.
+  The key is a SHA-256 digest of client credential + stable conversation
+  identity (explicit session header or the upstream conversation prefix) +
+  model + realm — never a raw prompt or credential. Bindings are process-local,
+  capped (4096) and expire after one hour; after an overflow the session keeps
+  the replacement account so the prompt cache is not bounced back and forth.
 - Recheck cooldown after slot admission and publish rejected-attempt quarantine
   before releasing the slot, so stale concurrent pools cannot repeat a burst.
 - Scope soft 429/code 6004 cooldown to account + upstream model (10-minute cap);
@@ -92,6 +100,16 @@
 - Add fixed-name per-option digests and multi-log cache study tools. Detect partial
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
+
+### Panel account concurrency display
+
+- Each account card shows a live `current/limit` concurrency badge (e.g. `0/2`)
+  fed by the same admission gate that routes requests, so “full” always matches
+  the actual routing decision. Idle is neutral, one in-flight is highlighted,
+  and a full account is marked red. Numbers refresh in place every 5 seconds
+  without re-rendering the grid (no button/scroll disruption). A lightweight
+  `GET /plugins/workbuddy/concurrency` endpoint exposes the process-local slot
+  snapshot for the badge and for external monitoring.
 
 ### Exhausted-account failover
 

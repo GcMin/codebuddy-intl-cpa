@@ -63,6 +63,9 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .badge.cn{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-border)}
 .badge.global{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border)}
 .badge.disabled{background:var(--mut-soft);color:var(--mut);border:1px solid var(--mut-border)}
+.badge.conc{background:var(--surface);color:var(--mut);border:1px solid var(--border);font-family:ui-monospace,monospace;font-size:10.5px}
+.badge.conc.busy{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border);font-weight:700}
+.badge.conc.full{background:var(--err-soft);color:var(--err);border:1px solid var(--err-border);font-weight:700}
 .filter-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .ftag{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:99px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600}
 .ftag.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -741,6 +744,7 @@ const PANEL_EN = {
   "每日奖励（国际）": "Daily bonus (Global)",
   "全部": "All",
   "已耗尽": "Exhausted",
+  "当前并发 / 上限（每账号同时进行中的请求数）": "Live concurrency / limit (in-flight requests per account)",
   "加载中…": "Loading…",
   "CodeBuddy 用量记录": "CodeBuddy Usage",
   "今日消耗积分": "Today credit",
@@ -1121,7 +1125,12 @@ function card(a){
     ? `${tr("<button class=\"done\" disabled=\"disabled\">使用中</button>")}`
     : (disabled?``:`<button class="sec" data-action="select" data-auth-index="${esc(a.auth_index)}${tr("\">选择账号</button>")}`);
   const refreshBtn=`<button class="sec" data-action="refresh" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"刷新积分\">刷新</button>")}`;
-  const badges=(selected?`${tr("<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">使用中</span>")}`:"")+(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`;
+  // Live account concurrency: current/limit in-flight requests. Only render
+  // when the backend reported it (known); legacy dashboards show no badge.
+  const concBadge=a.concurrency_known
+    ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(a.concurrency_limit)}</span>`
+    : "";
+  const badges=(selected?`${tr("<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">使用中</span>")}`:"")+(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
   return `<div class="card${selected?" selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">
   <h2>${esc(a.nickname||a.label||a.name)} <span style="display:flex;gap:6px;align-items:center">${badges}</span></h2>
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
@@ -1136,6 +1145,24 @@ let lastServerTime="";
 let activeAuthId="";
 let authFailCount=0;
 let authFailUntil=0;
+// Live concurrency badges: refresh numbers in place every 5s without
+// re-rendering the grid (buttons, drafts and scroll position stay intact).
+// The endpoint returns process-local slots only; a missing auth is 0 in-flight.
+async function refreshConcurrencyBadges(){
+  if(!getKey()||document.hidden) return;
+  try{
+    const d=await api("/concurrency");
+    const limit=d&&d.limit, slots=(d&&d.slots)||{};
+    document.querySelectorAll("[data-conc]").forEach(el=>{
+      const idx=el.getAttribute("data-conc");
+      const cur=slots[idx]||0;
+      el.textContent=`${cur}/${limit==null?"—":limit}`;
+      el.classList.toggle("full",limit!=null&&cur>=limit);
+      el.classList.toggle("busy",limit!=null&&cur>0&&cur<limit);
+    });
+  }catch(_){/* transient: next tick retries; no error toast spam */}
+}
+setInterval(refreshConcurrencyBadges,5000);
 // Lazy-load: fetch credits for all cards that lack them, concurrently.
 // Each card fetches independently; failed ones retry once after 2s.
 function lazyLoadCredits(accounts){
@@ -1393,6 +1420,8 @@ async function load(force, btn){
     bindCardActions(g);
     filterRegion(currentFilter, null);
     renderSummary(accounts);
+    // Initial badge numbers come with the dashboard; keep them live after.
+    refreshConcurrencyBadges();
     // Lazy-load credits for cards that don't have them yet.
     lazyLoadCredits(accounts);
     if(force){

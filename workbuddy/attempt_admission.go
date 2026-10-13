@@ -23,6 +23,19 @@ type accountChatGate struct{ inFlight int }
 var chatGateMu sync.Mutex
 var chatGates = map[string]*accountChatGate{}
 
+// This is the same state used for admission, not a separately estimated load.
+// The map is a snapshot so a management response never holds the gate lock
+// while encoding or serving HTTP. Idle accounts are absent and count as zero.
+func accountInFlightSnapshot() map[string]int {
+	chatGateMu.Lock()
+	defer chatGateMu.Unlock()
+	out := make(map[string]int, len(chatGates))
+	for key, gate := range chatGates {
+		out[key] = gate.inFlight
+	}
+	return out
+}
+
 func candidateRateModel(model string, auth *storedAuth) string {
 	if strings.TrimSpace(model) == "" {
 		return ""

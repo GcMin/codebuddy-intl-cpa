@@ -86,7 +86,11 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 	defer closeOnce()
 
 	collector := &sseUsageCollector{}
-	fin := runStreamFailover(cands, func(cand *failoverCandidate) (bool, int, error) {
+	realm := mmPrefixRealm(req.Model)
+	if sa, err := parseStored(req.StorageJSON); err == nil {
+		realm = accountRegion(sa)
+	}
+	fin := runStreamFailoverForSession(cands, requestSessionKey(req.ExecutorRequest, body, realm), func(cand *failoverCandidate) (bool, int, error) {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointChatFor(cand.Auth), bytes.NewReader(body))
 		if err != nil {
 			return false, 0, err

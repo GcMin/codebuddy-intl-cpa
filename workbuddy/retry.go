@@ -504,9 +504,13 @@ type failoverAttemptFn func(cand *failoverCandidate) (attemptOutcome, int, strin
 // first, then each fallback. Throttled/exhausted accounts are temporarily
 // skipped (no auth mutation); ambiguous or request-wide failures stop the loop.
 func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
+	return runFailoverForSession(cands, "", attemptFn, contexts...)
+}
+
+func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
-	for _, cand := range cands {
+	for _, cand := range chatSessions.preferred(sessionKey, cands) {
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
 		if errors.Is(admissionErr, errAccountBusy) {
 			busy = true
@@ -519,9 +523,11 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contex
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
-		outcome, status, body, err := func() (attemptOutcome, int, string, error) {
+		outcome, status, body, err := func() (outcome attemptOutcome, status int, body string, err error) {
 			defer release()
-			outcome, status, body, err := attemptFn(cand)
+			binding := chatSessions.begin(sessionKey, accountGateKey(cand))
+			defer func() { chatSessions.finish(sessionKey, binding, outcome == outcomeSuccess) }()
+			outcome, status, body, err = attemptFn(cand)
 			// Publish quarantine before another request can take the freed slot.
 			if outcome == outcomeRateLimited || outcome == outcomeAccountExhausted {
 				markCandidateUnavailable(cand, outcome, body)
@@ -566,9 +572,13 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 // the first chunk reached the client (emitted) or a non-rate-limit failure
 // occurs, the loop stops immediately.
 func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
+	return runStreamFailoverForSession(cands, "", attempt, contexts...)
+}
+
+func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
-	for _, cand := range cands {
+	for _, cand := range chatSessions.preferred(sessionKey, cands) {
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
 		if errors.Is(admissionErr, errAccountBusy) {
 			busy = true
@@ -581,9 +591,11 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
-		emitted, status, err := func() (bool, int, error) {
+		emitted, status, err := func() (emitted bool, status int, err error) {
 			defer release()
-			emitted, status, err := attempt(cand)
+			binding := chatSessions.begin(sessionKey, accountGateKey(cand))
+			defer func() { chatSessions.finish(sessionKey, binding, err == nil || emitted) }()
+			emitted, status, err = attempt(cand)
 			if err == nil {
 				resetCandidateCooldown(cand)
 			} else if !emitted {

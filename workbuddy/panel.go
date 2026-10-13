@@ -13,22 +13,25 @@ import (
 
 // wbAccount is one row of the dashboard.
 type wbAccount struct {
-	AuthIndex    string          `json:"auth_index"`
-	AuthID       string          `json:"auth_id,omitempty"`
-	Name         string          `json:"name"`
-	Label        string          `json:"label"`
-	Nickname     string          `json:"nickname"`
-	UID          string          `json:"uid"`
-	Region       string          `json:"region"` // "cn" or "global"
-	Plan         string          `json:"plan"`
-	Status       string          `json:"status"`
-	Disabled     bool            `json:"disabled"`
-	Exhausted    bool            `json:"exhausted"`
-	Selected     bool            `json:"selected"` // panel active routing card
-	Credits      *creditsSummary `json:"credits,omitempty"`
-	Checkin      *checkinSummary `json:"checkin,omitempty"`
-	TrialClaimed bool            `json:"trial_claimed,omitempty"` // Global: expert trial already claimed
-	Error        string          `json:"error,omitempty"`
+	AuthIndex          string          `json:"auth_index"`
+	AuthID             string          `json:"auth_id,omitempty"`
+	Name               string          `json:"name"`
+	Label              string          `json:"label"`
+	Nickname           string          `json:"nickname"`
+	UID                string          `json:"uid"`
+	Region             string          `json:"region"` // "cn" or "global"
+	Plan               string          `json:"plan"`
+	Status             string          `json:"status"`
+	Disabled           bool            `json:"disabled"`
+	Exhausted          bool            `json:"exhausted"`
+	Selected           bool            `json:"selected"` // panel active routing card
+	ConcurrencyCurrent int             `json:"concurrency_current"`
+	ConcurrencyLimit   int             `json:"concurrency_limit"`
+	ConcurrencyKnown   bool            `json:"concurrency_known"`
+	Credits            *creditsSummary `json:"credits,omitempty"`
+	Checkin            *checkinSummary `json:"checkin,omitempty"`
+	TrialClaimed       bool            `json:"trial_claimed,omitempty"` // Global: expert trial already claimed
+	Error              string          `json:"error,omitempty"`
 }
 
 // credits/checkin/plan fields are left empty — the panel renders skeletons
@@ -63,6 +66,7 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 	pruneLifecycleState()
 	pruneCheckinLocks()
 	out := make([]wbAccount, len(files))
+	inFlight := accountInFlightSnapshot()
 	// Accounts are independent — fetch their dashboards concurrently. With 4
 	// accounts this cuts cold-load latency from ~4×(3 serial upstream calls)
 	// to roughly one slowest account.
@@ -72,12 +76,13 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 		go func(i int, f pluginapi.HostAuthFileEntry) {
 			defer wg.Done()
 			acct := wbAccount{
-				AuthIndex: f.AuthIndex,
-				AuthID:    f.ID,
-				Name:      f.Name,
-				Label:     f.Label,
-				Status:    f.Status,
-				Disabled:  f.Disabled,
+				AuthIndex:        f.AuthIndex,
+				AuthID:           f.ID,
+				Name:             f.Name,
+				Label:            f.Label,
+				Status:           f.Status,
+				Disabled:         f.Disabled,
+				ConcurrencyLimit: maxAccountChatInFlight,
 			}
 			sa, phys, err := hostAuthGetBundle(f.AuthIndex)
 			if err != nil {
@@ -95,6 +100,8 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 			acct.Nickname = sa.Account.Nickname
 			acct.UID = sa.Account.UID
 			acct.Region = accountRegion(sa)
+			acct.ConcurrencyCurrent = inFlight[accountGateKey(&failoverCandidate{AuthID: f.AuthIndex, Auth: sa})]
+			acct.ConcurrencyKnown = true
 			if fetchCredits {
 				plan, ci, cr, errs := cachedAccountDetails(f.ID, sa, force)
 				acct.Plan = plan

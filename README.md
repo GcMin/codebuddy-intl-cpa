@@ -110,9 +110,17 @@ executor immediately tries another enabled account in the same realm. If every
 account is busy, it fails fast without sending a paid upstream request. There is
 **no local waiting queue**. It rechecks quarantine after reserving each slot, so
 a concurrent request cannot keep sending to an account just rejected with 429.
+Sessions are softly sticky like SuperApp routing: a conversation keeps using its
+last executing account while a slot is free, moves to a free peer when it is
+busy, and keeps the replacement so the prompt cache is not bounced back. The
+affinity key is a digest of client credential + stable conversation identity
+(explicit session header or the conversation prefix used for the upstream CID)
++ model + realm; bindings are process-local, capped and expire after an hour.
 Separate CPA processes have separate limits; prod and dev must not use the same
 account concurrently. Switching accounts may lose prompt cache on `gpt-6-sol`
 and `gpt-6.1-sol`; the account limit is not a cache-sharing guarantee.
+Each panel account card shows the live `current/limit` in-flight badge (e.g.
+`0/2`) sourced from the admission gate itself, refreshed every 5 seconds.
 
 Soft 429/code 6004 quarantine is **account + upstream model**. Credit exhaustion
 remains account-wide. When all accounts for a model are cooling, a request may
