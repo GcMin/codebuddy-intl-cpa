@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +16,15 @@ import (
 
 func resetChatSessions(t *testing.T) {
 	t.Helper()
+	// Bindings are persisted now, so keep every test's store in its own temp
+	// dir: a test must never read or write the deployment's real state file.
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
 	chatSessions.mu.Lock()
 	old, version := chatSessions.entries, chatSessions.version
 	chatSessions.entries = make(map[string]sessionBinding)
 	chatSessions.version = 0
+	chatSessions.loaded = false
+	chatSessions.dirty = false
 	chatSessions.mu.Unlock()
 	t.Cleanup(func() {
 		chatSessions.mu.Lock()
@@ -162,6 +170,7 @@ func TestFailedAttemptDoesNotPinSessionAndStreamPartialRetainsIt(t *testing.T) {
 }
 
 func TestSessionBindingExpiryAndCap(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
 	s := sessionBindingStore{entries: make(map[string]sessionBinding)}
 	if v := s.begin("old", "global:uid-a"); v == 0 {
 		t.Fatal("no binding")
@@ -188,5 +197,97 @@ func TestSessionBindingExpiryAndCap(t *testing.T) {
 	s.mu.Unlock()
 	if size > maxSessionBindings {
 		t.Fatalf("unbounded session map: %d", size)
+	}
+}
+
+// A restart (deploy, crash, host reload) must not move a conversation to
+// another account: on gpt-6-sol a cross-account move re-writes the whole prompt
+// cache. Bindings therefore survive the process.
+func TestSessionBindingsPersistAcrossRestart(t *testing.T) {
+	resetChatSessions(t)
+	cands := exhaustedCandidates(t)
+	key := "session:persisted"
+	// The second candidate answers, exactly like a failover turn would.
+	if got := runFailoverForSession([]*failoverCandidate{cands[1], cands[0]}, key, func(*failoverCandidate) (attemptOutcome, int, string, error) {
+		return outcomeSuccess, 200, "", nil
+	}); got.AuthID != cands[1].AuthID {
+		t.Fatalf("setup: %+v", got)
+	}
+	chatSessions.flush()
+
+	// Fresh store = fresh process. It must read the file back.
+	restarted := sessionBindingStore{entries: make(map[string]sessionBinding)}
+	restarted.mu.Lock()
+	restarted.ensureLoadedLocked()
+	restarted.mu.Unlock()
+	if len(restarted.entries) != 1 {
+		t.Fatalf("bindings not restored: %d", len(restarted.entries))
+	}
+	if got := restarted.preferred(key, cands); got[0] != cands[1] {
+		t.Fatal("restored binding did not win")
+	}
+	if got := restarted.preferred("session:unknown", cands); got[0] != cands[0] {
+		t.Fatal("restored file leaked onto another session")
+	}
+}
+
+func TestSessionPersistenceSkipsExpiredCorruptAndUnknownEntries(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("WORKBUDDY_DATA_DIR", dir)
+	path := sessionAffinityPath()
+	live := "global:uid-b"
+	// Expired entry, empty account and a non-JSON sibling must all be dropped
+	// instead of resurrecting an account the TTL already retired.
+	file := persistedSessionStore{Version: 1, Bindings: map[string]persistedSessionBinding{
+		"expired": {Account: "global:uid-a", ExpiresAt: time.Now().Add(-time.Minute)},
+		"empty":   {Account: "", ExpiresAt: time.Now().Add(time.Hour)},
+		"live":    {Account: live, ExpiresAt: time.Now().Add(time.Hour)},
+	}}
+	raw, err := json.Marshal(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := sessionBindingStore{entries: make(map[string]sessionBinding)}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	s.mu.Unlock()
+	if len(s.entries) != 1 {
+		t.Fatalf("expected only the live binding, got %d", len(s.entries))
+	}
+	if e, ok := s.entries["live"]; !ok || e.account != live {
+		t.Fatalf("live binding lost: %+v", s.entries)
+	}
+
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := sessionBindingStore{entries: make(map[string]sessionBinding)}
+	corrupt.mu.Lock()
+	corrupt.ensureLoadedLocked()
+	corrupt.mu.Unlock()
+	if len(corrupt.entries) != 0 {
+		t.Fatalf("corrupt file produced bindings: %+v", corrupt.entries)
+	}
+}
+
+func TestFlushKeepsDirtyFlagOnWriteFailure(t *testing.T) {
+	// A data dir that cannot be created (a path under a regular file) must not
+	// clear the dirty flag, so the next tick retries instead of losing state.
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKBUDDY_DATA_DIR", filepath.Join(blocker, "nested"))
+	s := sessionBindingStore{entries: make(map[string]sessionBinding)}
+	s.begin("k", "global:uid-a")
+	s.flush()
+	s.mu.Lock()
+	dirty := s.dirty
+	s.mu.Unlock()
+	if !dirty {
+		t.Fatal("failed write dropped pending state")
 	}
 }

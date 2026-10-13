@@ -83,9 +83,22 @@
   busy, the request moves to a free same-realm peer and the binding follows it.
   The key is a SHA-256 digest of client credential + stable conversation
   identity (explicit session header or the upstream conversation prefix) +
-  model + realm — never a raw prompt or credential. Bindings are process-local,
-  capped (4096) and expire after one hour; after an overflow the session keeps
-  the replacement account so the prompt cache is not bounced back and forth.
+  model + realm — never a raw prompt or credential. Bindings are capped (4096),
+  expire after one hour, and persist to `session-affinity.json` so a restart
+  (deploy, crash, host reload) no longer moves a conversation and re-writes its
+  prompt cache; after an overflow the session keeps the replacement account so
+  the cache is not bounced back and forth.
+- Removed the panel-selected "active account" and its `/select` endpoint. One
+  global selection leaked across sessions and models: a failover in one
+  conversation set it, and the next request of an unrelated conversation could
+  fall back onto that account — a guaranteed prompt-cache miss on `gpt-6-sol`
+  (measured live: 18.95 and 21.50 credits for one 75–85K-token prefix). The
+  failover fallback is now the host-routed account, else the first eligible
+  candidate; there is no cross-session state left to contaminate. The panel no
+  longer offers a Select button; the live `current/limit` badge shows where
+  traffic actually goes. The plugin also stops registering the `scheduler.pick`
+  capability (the host's built-in scheduler picks, the executor enforces
+  affinity), and the deprecated `scheduler_mode` config key is ignored.
 - Recheck cooldown after slot admission and publish rejected-attempt quarantine
   before releasing the slot, so stale concurrent pools cannot repeat a burst.
 - Scope soft 429/code 6004 cooldown to account + upstream model (10-minute cap);

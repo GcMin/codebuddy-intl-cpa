@@ -24,7 +24,6 @@ type wbAccount struct {
 	Status             string          `json:"status"`
 	Disabled           bool            `json:"disabled"`
 	Exhausted          bool            `json:"exhausted"`
-	Selected           bool            `json:"selected"` // panel active routing card
 	ConcurrencyCurrent int             `json:"concurrency_current"`
 	ConcurrencyLimit   int             `json:"concurrency_limit"`
 	ConcurrencyKnown   bool            `json:"concurrency_known"`
@@ -178,17 +177,10 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 	checkinAutoMu.RLock()
 	auto := checkinAuto
 	checkinAutoMu.RUnlock()
-	// Ensure default selection for panel + scheduler (first usable card).
-	activeID := ensureDefaultActiveAuth(out)
 	// Aggregate credits for panel/API consumers (all accounts currently in out).
 	sum := summarizeCredits(out)
-	// Mark selected account in list for UI.
-	for i := range out {
-		out[i].Selected = out[i].AuthID == activeID
-	}
 	resp := map[string]any{
 		"accounts":       out,
-		"active_auth":    activeID,
 		"checkin_auto":   auto,
 		"daily_bonus":    dailyBonusEnabled(),
 		"lifecycle_auto": lifecycleEnabled(),

@@ -350,16 +350,16 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 		return &failoverPool{Primary: pick}, storage, nil
 	}
 
+	// Primary is the account the host routed to when it is still eligible,
+	// otherwise the first eligible candidate. There is deliberately no
+	// panel-selected global account here: one global choice leaked across
+	// sessions and models, so a failover in one conversation moved another
+	// conversation onto an unrelated account and re-wrote its prompt cache.
 	selected := 0
-	activeID := getActiveAuthID()
 	for i, c := range candidates {
-		f := c.file
-		if matchesRouted(f) {
+		if matchesRouted(c.file) {
 			selected = i
 			break
-		}
-		if activeID != "" && (f.ID == activeID || f.AuthIndex == activeID || f.Name == activeID) {
-			selected = i
 		}
 	}
 

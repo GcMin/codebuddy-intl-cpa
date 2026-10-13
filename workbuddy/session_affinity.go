@@ -4,13 +4,17 @@ package main
 // prefers its last executing account, but may move to a free peer in the same
 // realm when that account has no slot. Never store a client credential or raw
 // prompt: keys are SHA-256 digests and values are physical account identities.
-// This is process-local, like the account gate; host routing can still reject
-// a request before the executor is invoked.
+// Bindings are persisted next to the other plugin state so a restart (deploy,
+// crash, host reload) does not move a conversation and re-write its prompt
+// cache. The account gate stays process-local; host routing can still reject a
+// request before the executor is invoked.
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -21,19 +25,118 @@ import (
 const sessionBindingTTL = time.Hour
 const maxSessionBindings = 4096
 
+// Bindings are persisted so a plugin/host restart does not silently move a
+// conversation to another account: on gpt-6-sol and gpt-6.1-sol a cross-account
+// move re-writes the whole prompt cache (~20 credits for a 75K-token prefix).
+// The file holds only session-key digests and physical account identities.
+const sessionAffinityFileName = "session-affinity.json"
+const sessionAffinityFlushInterval = 5 * time.Second
+
 type sessionBinding struct {
 	account string
 	version uint64
 	expires time.Time
 }
 
+// persistedSessionBinding is the on-disk form. Expiry is stored so a stale
+// file cannot resurrect a binding the TTL already retired.
+type persistedSessionBinding struct {
+	Account   string    `json:"account"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type persistedSessionStore struct {
+	Version  int                                `json:"version"`
+	Bindings map[string]persistedSessionBinding `json:"bindings"`
+}
+
 type sessionBindingStore struct {
-	mu      sync.Mutex
-	entries map[string]sessionBinding
-	version uint64
+	mu        sync.Mutex
+	entries   map[string]sessionBinding
+	version   uint64
+	loaded    bool
+	dirty     bool
+	flushOnce sync.Once
 }
 
 var chatSessions = sessionBindingStore{entries: make(map[string]sessionBinding)}
+
+// sessionAffinityPath resolves the persistent binding file next to the other
+// plugin state (workbuddy-state.json, request-usage.jsonl).
+func sessionAffinityPath() string {
+	return filepath.Join(wbDataDir(), sessionAffinityFileName)
+}
+
+// ensureLoadedLocked restores persisted bindings once, dropping expired or
+// malformed entries. A missing or corrupt file is ignored: the next bind
+// rewrites it.
+func (s *sessionBindingStore) ensureLoadedLocked() {
+	if s.loaded {
+		return
+	}
+	s.loaded = true
+	s.flushOnce.Do(func() { go s.flushLoop() })
+	raw, err := os.ReadFile(sessionAffinityPath())
+	if err != nil {
+		return
+	}
+	var file persistedSessionStore
+	if json.Unmarshal(raw, &file) != nil {
+		return
+	}
+	now := time.Now()
+	for key, entry := range file.Bindings {
+		if key == "" || entry.Account == "" || !entry.ExpiresAt.After(now) {
+			continue
+		}
+		if len(s.entries) >= maxSessionBindings {
+			break
+		}
+		s.version++
+		s.entries[key] = sessionBinding{account: entry.Account, version: s.version, expires: entry.ExpiresAt}
+	}
+}
+
+// markDirtyLocked schedules a debounced write. Requests never block on disk I/O.
+func (s *sessionBindingStore) markDirtyLocked() { s.dirty = true }
+
+func (s *sessionBindingStore) flushLoop() {
+	ticker := time.NewTicker(sessionAffinityFlushInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.flush()
+	}
+}
+
+// flush writes live bindings atomically. Failure is not fatal: the store stays
+// dirty and the next tick retries.
+func (s *sessionBindingStore) flush() {
+	s.mu.Lock()
+	if !s.dirty {
+		s.mu.Unlock()
+		return
+	}
+	now := time.Now()
+	out := persistedSessionStore{Version: 1, Bindings: make(map[string]persistedSessionBinding, len(s.entries))}
+	for key, entry := range s.entries {
+		if !entry.expires.After(now) {
+			continue
+		}
+		out.Bindings[key] = persistedSessionBinding{Account: entry.account, ExpiresAt: entry.expires}
+	}
+	s.dirty = false
+	s.mu.Unlock()
+	raw, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return
+	}
+	raw = append(raw, '\n')
+	if err := atomicWriteFile(sessionAffinityPath(), raw); err != nil {
+		s.mu.Lock()
+		s.dirty = true
+		s.mu.Unlock()
+	}
+}
 
 // The client credential scopes affinity, not account capacity. Without a
 // client identity, identical first prompts from different callers must not
@@ -88,9 +191,11 @@ func (s *sessionBindingStore) preferred(key string, candidates []*failoverCandid
 		return candidates
 	}
 	s.mu.Lock()
+	s.ensureLoadedLocked()
 	entry, ok := s.entries[key]
 	if ok && !entry.expires.After(time.Now()) {
 		delete(s.entries, key)
+		s.markDirtyLocked()
 		ok = false
 	}
 	s.mu.Unlock()
@@ -123,6 +228,7 @@ func (s *sessionBindingStore) begin(key, account string) uint64 {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
 	if s.entries == nil {
 		s.entries = make(map[string]sessionBinding)
 	}
@@ -145,6 +251,7 @@ func (s *sessionBindingStore) begin(key, account string) uint64 {
 	}
 	s.version++
 	s.entries[key] = sessionBinding{account: account, version: s.version, expires: time.Now().Add(sessionBindingTTL)}
+	s.markDirtyLocked()
 	return s.version
 }
 
@@ -154,14 +261,17 @@ func (s *sessionBindingStore) finish(key string, version uint64, keep bool) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
 	current, ok := s.entries[key]
 	if !ok || current.version != version {
 		return
 	}
 	if !keep {
 		delete(s.entries, key)
+		s.markDirtyLocked()
 		return
 	}
 	current.expires = time.Now().Add(sessionBindingTTL)
 	s.entries[key] = current
+	s.markDirtyLocked()
 }

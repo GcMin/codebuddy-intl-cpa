@@ -612,10 +612,7 @@ const PANEL_EN = {
   "<button class=\"done\" disabled=\"disabled\">已领取</button>": "<button class=\"done\" disabled=\"disabled\">Claimed</button>",
   "\">领取专家体验包</button>": "\">Claim Expert Pack</button>",
   "签到": "Check-in",
-  "<button class=\"done\" disabled=\"disabled\">使用中</button>": "<button class=\"done\" disabled=\"disabled\">In Use</button>",
-  "\">选择账号</button>": "\">Select</button>",
   "\" title=\"刷新积分\">刷新</button>": "\" title=\"Refresh credits\">Refresh</button>",
-  "<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">使用中</span>": "<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">In Use</span>",
   "<span class=\"badge disabled\">已禁用</span>": "<span class=\"badge disabled\">Disabled</span>",
   "<span class=\"badge exhausted\">已耗尽</span>": "<span class=\"badge exhausted\">Exhausted</span>",
   "<div class=\"row\"><span class=\"k\">错误</span><span class=\"v err\">": "<div class=\"row\"><span class=\"k\">Error</span><span class=\"v err\">",
@@ -661,8 +658,6 @@ const PANEL_EN = {
   " 天": " days",
   "未知结果": "Unknown",
   "签到请求失败": "Check-in request failed",
-  "选择账号失败": "Select failed",
-  "已选择账号": "Selected",
   "未知错误": "unknown",
   "积分已刷新": "Credits refreshed",
   " · 剩余积分 ": " · remaining ",
@@ -1092,7 +1087,6 @@ function bindCardActions(root){
       const idx=ev.currentTarget.dataset.authIndex;
       if(act==="checkin") checkin(idx, ev.currentTarget);
       else if(act==="claim") claimTrial(idx, ev.currentTarget);
-      else if(act==="select") selectAuth(idx, ev.currentTarget);
       else if(act==="refresh") refreshCredits(idx, ev.currentTarget);
     });
   });
@@ -1104,7 +1098,6 @@ function card(a){
   const region=a.region||"cn";
   const isGlobal=region==="global";
   const disabled=!!a.disabled;
-  const selected=!!a.selected;
   const regionBadge=`<span class="badge ${region}">${isGlobal?tr("国际"):tr("国内")}</span>`;
   // CN: check-in button; Global: claim expert pack button (or Claimed if trial_claimed)
   let actionHTML;
@@ -1121,28 +1114,24 @@ function card(a){
     const btnDisabled=checked?" disabled=\"disabled\"":"";
     actionHTML=`<button class="${btnClass}" data-action="checkin" data-auth-index="${esc(a.auth_index)}"${btnDisabled}>${btnText}</button>`;
   }
-  const selectBtn=selected
-    ? `${tr("<button class=\"done\" disabled=\"disabled\">使用中</button>")}`
-    : (disabled?``:`<button class="sec" data-action="select" data-auth-index="${esc(a.auth_index)}${tr("\">选择账号</button>")}`);
   const refreshBtn=`<button class="sec" data-action="refresh" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"刷新积分\">刷新</button>")}`;
   // Live account concurrency: current/limit in-flight requests. Only render
   // when the backend reported it (known); legacy dashboards show no badge.
   const concBadge=a.concurrency_known
     ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
     : "";
-  const badges=(selected?`${tr("<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">使用中</span>")}`:"")+(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
-  return `<div class="card${selected?" selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">
+  const badges=(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
+  return `<div class="card" data-region="${region}" data-auth="${esc(a.auth_index)}">
   <h2>${esc(a.nickname||a.label||a.name)} <span style="display:flex;gap:6px;align-items:center">${badges}</span></h2>
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
   ${progressHTML(cr)}
   ${a.error?`${tr("<div class=\"row\"><span class=\"k\">错误</span><span class=\"v err\">")}${esc(a.error)}</span></div>`:""}
-  <div class="actions">${selectBtn}${refreshBtn}${actionHTML}</div>
+  <div class="actions">${refreshBtn}${actionHTML}</div>
   </div>`;
 }
 let currentFilter="all";
 let lastAccounts=[];
 let lastServerTime="";
-let activeAuthId="";
 let authFailCount=0;
 let authFailUntil=0;
 // Live concurrency badges: refresh numbers in place every 5s without
@@ -1217,18 +1206,14 @@ function updateOneCard(a){
   if(all.every(x=>x.credits||x.error||x.disabled)){
     renderSummary(all);
     // After all lazy credits loaded, the backend cache now has fresh exhausted
-    // flags. Re-fetch /accounts (light, cache-only) so ensureDefaultActiveAuth
-    // can pick the correct card — first load may have selected an account that
-    // turned out to be exhausted.
+    // flags. Re-fetch /accounts (light, cache-only) and merge them so a card
+    // that just ran out shows as exhausted.
     api("/accounts").then(d=>{
       if(!d||d.error) return;
       const fresh=d.accounts||[];
-      activeAuthId=d.active_auth||activeAuthId;
-      // Merge fresh selected/exhausted into lastAccounts and re-render.
       (fresh||[]).forEach(fa=>{
         const idx=all.findIndex(x=>x.auth_index===fa.auth_index);
         if(idx>=0){
-          all[idx].selected=!!fa.selected;
           all[idx].exhausted=!!fa.exhausted;
         }
       });
@@ -1408,7 +1393,6 @@ async function load(force, btn){
     }
     const accounts=d.accounts||[];
     lastAccounts=accounts;
-    activeAuthId=d.active_auth||"";
     updateFilterCounts(accounts);
     if(!accounts.length){
       g.innerHTML=tr("<div class=\"loading\">暂无 CodeBuddy 账号</div>");
@@ -1485,33 +1469,6 @@ async function checkin(idx, btn){
     await load(false);
   }catch(e){
     toast(tr("签到请求失败"),"err",e.message);
-    busy(btn,false);
-  }
-}
-async function selectAuth(idx, btn){
-  busy(btn,true);
-  try{
-    const d=await api("/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({auth_index:idx})});
-    if(d.error){
-      toast(tr("选择账号失败"),"err",d.error);
-      busy(btn,false);
-      return;
-    }
-    activeAuthId=d.active_auth||idx;
-    const who=d.nickname||idx;
-    const region=d.region==="global"?tr("国际"):tr("国内");
-    toast(tr("已选择账号"),"ok",who+" · "+region);
-    // Re-render from local state for instant feedback, then soft reload
-    (lastAccounts||[]).forEach(a=>{a.selected=(a.auth_id===activeAuthId);});
-    const g=document.getElementById("grid");
-    if(g){
-      g.innerHTML=accountsForFilter(lastAccounts).map(card).join("");
-      bindCardActions(g);
-    }
-    filterRegion(currentFilter, null);
-  }catch(e){
-    toast(tr("选择账号失败"),"err",e.message||String(e));
-  }finally{
     busy(btn,false);
   }
 }

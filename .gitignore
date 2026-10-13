@@ -19,3 +19,13 @@ coverage.html
 # Editors / OS
 .DS_Store
 *.swp
+
+# Stray local build output at the repo root (make build writes here)
+/workbuddy.so
+/workbuddy-dev.so
+/workbuddy.h
+/workbuddy-dev.h
+
+# Python bytecode from scripts/
+__pycache__/
+*.pyc

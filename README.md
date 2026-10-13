@@ -115,7 +115,11 @@ last executing account while a slot is free, moves to a free peer when it is
 busy, and keeps the replacement so the prompt cache is not bounced back. The
 affinity key is a digest of client credential + stable conversation identity
 (explicit session header or the conversation prefix used for the upstream CID)
-+ model + realm; bindings are process-local, capped and expire after an hour.
++ model + realm; bindings are capped, expire after an hour, and persist to
+`session-affinity.json` so a restart does not move a conversation. Routing is
+always per session: there is no panel-selected active account, because one
+global choice leaked across conversations and forced a prompt-cache re-write on
+the model that does not share cache across accounts.
 Separate CPA processes have separate limits; prod and dev must not use the same
 account concurrently. Switching accounts may lose prompt cache on `gpt-6-sol`
 and `gpt-6.1-sol`; the account limit is not a cache-sharing guarantee.

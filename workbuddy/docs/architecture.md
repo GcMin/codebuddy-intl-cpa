@@ -11,7 +11,6 @@ driven via the `pluginabi` RPC interface.
 | `ModelProvider` | `models.go` | Static + dynamic model list, alias reverse-resolution, `oauth-excluded-models` filter |
 | `AuthProvider` | `oauth.go`, `auth_parse.go` (in `authfile.go` / `main.go`) | OAuth login flow (CN + Global), token refresh, auth file parse |
 | `Executor` | `executor.go`, `stream.go`, `payload.go` | Chat completions, streaming SSE pump, request body rewriting |
-| `Scheduler` | `scheduler.go`, `active_auth.go` | Optional panel-selected account routing (`scheduler_mode: credits`) |
 | `ManagementAPI` | `management.go`, `panel.go`, `checkin.go`, `credits_handler.go`, `billing.go`, `usage_config.go`, `host_auth.go` | Dashboard, manual check-in, credits query, import credential, config |
 | `UsagePlugin` | `usage.go` | Forward every request's usage record to CPAMP |
 
@@ -53,9 +52,6 @@ lifecycle.go      reconcileOneAccount/AllAccounts/AfterExecutorError/ByUID +
 policy.go         lifecycleAction decisions (pure functions) + displayNote + labelForAuth
 authfile.go       authFileNameFor/sanitizeUIDForFileName/hostAuthPersist/deleteAuth +
                   path safety checks
-
-scheduler.go      handleSchedulerPick + candidateDisabled + cachedCreditsScore
-active_auth.go    activeAuthID sticky state + pickActiveAuth + clearActiveAuthIfMatch
 
 cache.go          accountCache + accountDetailFlight singleflight + prune
 redact.go         redactSecrets + 4 regex + truncateRedacted + truncate
@@ -136,10 +132,16 @@ panel.html → /v0/management/plugins/workbuddy/accounts
    (historical default). When set, mutating endpoints require a constant-time
    Bearer match plus a per-IP token bucket.
 
-6. **Scheduler defers by default.** `scheduler_mode: off` (default) makes
-   `handleSchedulerPick` always return `Handled: false` so CPA's built-in
-   scheduler picks accounts. The plugin only routes when the operator
-   explicitly opts in with `scheduler_mode: credits`.
+6. **Routing is per session, never a global selection.** The plugin does not
+   register a `scheduler.pick` capability, so CPA's built-in scheduler makes
+   the initial account pick. The executor then enforces per-session affinity
+   (`session_affinity.go`): a conversation keeps its last executing account
+   while a slot is free and moves to a free same-realm peer when it is not.
+   There is no panel-selected "active" account — one global choice used to leak
+   across sessions, so a failover in one conversation moved another
+   conversation onto an unrelated account and re-wrote its prompt cache.
+   Bindings persist to `session-affinity.json` so a restart does not move a
+   conversation.
 
 7. **No goroutine leaks across hot-reload.** The scheduler loop uses a
    `schedulerStop` channel and is idempotent. The plugin's `Shutdown` is a
@@ -159,6 +161,3 @@ panel.html → /v0/management/plugins/workbuddy/accounts
 - **Management**: `management.register` returns routes under
   `/v0/management/plugins/workbuddy/*` and a panel resource under
   `/v0/resource/plugins/workbuddy/panel`.
-- **Scheduler**: `scheduler.pick` RPC — plugin returns `Handled: true` with
-  an `AuthID` only when `scheduler_mode: credits` and a valid candidate
-  exists; otherwise defers.
