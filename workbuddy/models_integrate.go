@@ -211,12 +211,11 @@ func truncateTestContent(s string, n int) string {
 // ---- Dynamic prefix emission + strip (Model Manager decision 4) ----
 //
 // The Model Manager prefix settings replace the hardcoded cn/ behaviour:
-// effectiveSettings(realm, authID).Prefix{On,Val} decides whether the realm's
-// models are emitted with a prefix and which one (empty value + On = realm
-// default: cn/ for CN, cb/ for Global). Global default is OFF (bare IDs, the
-// historical behaviour), CN default is ON cn/. The per-account override is
-// resolved through effectiveSettings, so an account with its own override
-// emits/strips its own prefix (PLAN-0907b T3).
+// effectiveSettings(realm).Prefix{On,Val} decides whether the realm's models
+// are emitted with a prefix and which one (empty value + On = realm default:
+// cn/ for CN, cb/ for Global). Global default is OFF (bare IDs, the historical
+// behaviour), CN default is ON cn/. Settings are per realm only — the
+// per-account override layer was removed (PLAN-0907b follow-up, Noel 13 Okt).
 
 // mmPrefixFromSettings resolves the client-facing prefix of one settings layer
 // ("" = bare). On with an empty value = realm default (cn/ for CN, cb/ for
@@ -235,10 +234,9 @@ func mmPrefixFromSettings(realm string, s mmSettings) string {
 	return v
 }
 
-// mmEffectivePrefix returns the prefix string to emit for a realm+account
-// ("" = bare). authID == "" resolves the realm layer only.
-func mmEffectivePrefix(realm, authID string) string {
-	return mmPrefixFromSettings(realm, effectiveSettings(realm, authID))
+// mmEffectivePrefix returns the prefix string to emit for a realm ("" = bare).
+func mmEffectivePrefix(realm string) string {
+	return mmPrefixFromSettings(realm, effectiveSettings(realm))
 }
 
 // mmDefaultPrefix is the per-realm default prefix (used when On && Val == "").
@@ -277,7 +275,7 @@ func validatePrefixSettings(realm string, s mmSettings) error {
 		return nil
 	}
 	other := mmOtherRealm(realm)
-	if otherPfx := mmEffectivePrefix(other, ""); otherPfx != "" && strings.EqualFold(own, otherPfx) {
+	if otherPfx := mmEffectivePrefix(other); otherPfx != "" && strings.EqualFold(own, otherPfx) {
 		return fmt.Errorf("prefix %s collides with the %s realm prefix %s", own, realmLabel(other), otherPfx)
 	}
 	if realm == realmGlobal && strings.EqualFold(own, "cn/") {
@@ -292,8 +290,7 @@ func validatePrefixSettings(realm string, s mmSettings) error {
 // mmPrefixRealm reports which realm owns a client-facing model prefix
 // ("" = bare / unknown). Used for realm-specific failover pools and for
 // isCNModelID. Detection uses the realm-layer effective prefixes plus the
-// legacy cn/ and cb/ defaults; a per-account override prefix is only known to
-// that account, so it is not part of this realm-level classification.
+// legacy cn/ and cb/ defaults.
 func mmPrefixRealm(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if m == "" {
@@ -312,8 +309,8 @@ func mmPrefixRealm(model string) string {
 		prefix string
 	}
 	candidates := []rp{
-		{realmCN, mmEffectivePrefix(realmCN, "")},
-		{realmGlobal, mmEffectivePrefix(realmGlobal, "")},
+		{realmCN, mmEffectivePrefix(realmCN)},
+		{realmGlobal, mmEffectivePrefix(realmGlobal)},
 	}
 	best := ""
 	bestRealm := ""
@@ -330,10 +327,10 @@ func mmPrefixRealm(model string) string {
 	return bestRealm
 }
 
-// applyDynamicPrefix prefixes/normalizes the emitted model IDs for one realm
-// (and optional account override). Replaces prefixCNModels (hardcoded cn/).
-func applyDynamicPrefix(models []pluginapi.ModelInfo, realm, authID string) []pluginapi.ModelInfo {
-	pfx := mmEffectivePrefix(realm, authID)
+// applyDynamicPrefix prefixes/normalizes the emitted model IDs for one realm.
+// Replaces prefixCNModels (hardcoded cn/).
+func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
+	pfx := mmEffectivePrefix(realm)
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, m := range models {
 		if pfx == "" {
@@ -447,10 +444,10 @@ func mmTriggerHostReload(hdr http.Header) mmReloadResult {
 }
 
 // mmFilterDisabled removes models the user turned off in the Model Manager
-// (realm + per-account override resolved for this auth). Strips any known
+// (realm layer). Strips any known
 // prefix before the lookup because the disabled list stores bare catalog ids.
-func mmFilterDisabled(models []pluginapi.ModelInfo, realm, authID string) []pluginapi.ModelInfo {
-	st := effectiveSettings(realm, authID)
+func mmFilterDisabled(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
+	st := effectiveSettings(realm)
 	if len(st.Disabled) == 0 {
 		return models
 	}
@@ -458,7 +455,7 @@ func mmFilterDisabled(models []pluginapi.ModelInfo, realm, authID string) []plug
 	for _, id := range st.Disabled {
 		off[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
 	}
-	prefixes := mmKnownPrefixes(realm, authID)
+	prefixes := mmKnownPrefixes(realm)
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, m := range models {
 		id := strings.ToLower(strings.TrimSpace(m.ID))
@@ -536,7 +533,7 @@ func mmEmissionModels(base []pluginapi.ModelInfo, realm, authID string) []plugin
 		}
 		add(modelDefInfo(u.modelDef))
 	}
-	for _, c := range effectiveSettings(realm, authID).Custom {
+	for _, c := range effectiveSettings(realm).Custom {
 		name := strings.TrimSpace(c.Name)
 		if name == "" {
 			name = c.ID
@@ -546,11 +543,11 @@ func mmEmissionModels(base []pluginapi.ModelInfo, realm, authID string) []plugin
 	return out
 }
 
-// mmKnownPrefixes lists every prefix the plugin can emit for a realm+account:
-// the effective prefix of that layer, the other realm's realm-layer prefix and
+// mmKnownPrefixes lists every prefix the plugin can emit for a realm: its
+// effective prefix, the other realm's effective prefix and
 // the two legacy defaults (cn/ cb/). Used to strip before disabled lookups and
 // to keep old client configs working.
-func mmKnownPrefixes(realm, authID string) []string {
+func mmKnownPrefixes(realm string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, 4)
 	add := func(p string) {
@@ -564,8 +561,8 @@ func mmKnownPrefixes(realm, authID string) []string {
 		seen[p] = struct{}{}
 		out = append(out, p)
 	}
-	add(mmEffectivePrefix(realm, authID))
-	add(mmEffectivePrefix(mmOtherRealm(realm), ""))
+	add(mmEffectivePrefix(realm))
+	add(mmEffectivePrefix(mmOtherRealm(realm)))
 	add("cn/")
 	add("cb/")
 	return out
@@ -586,14 +583,14 @@ func mmRealmForAuth(storageJSON []byte) string {
 // requested model id (client-facing alias → upstream id). Falls back to the
 // other realm's effective prefix and the hardcoded cn/ cb/ defaults so old
 // client configs (cn/glm-5.3) keep resolving after a prefix change.
-func stripDynamicPrefix(model, realm, authID string) (string, bool) {
+func stripDynamicPrefix(model, realm string) (string, bool) {
 	m := strings.TrimSpace(model)
 	low := strings.ToLower(m)
-	own := mmEffectivePrefix(realm, authID)
+	own := mmEffectivePrefix(realm)
 	if own != "" && strings.HasPrefix(low, strings.ToLower(own)) {
 		return strings.TrimSpace(m[len(own):]), true
 	}
-	for _, pfx := range mmKnownPrefixes(realm, authID) {
+	for _, pfx := range mmKnownPrefixes(realm) {
 		if pfx == strings.ToLower(own) {
 			continue
 		}

@@ -218,6 +218,9 @@ func configure(raw []byte) {
 
 	resolveUsageReport(cfgURL, cfgKey)
 	ensureScheduler()
+	if n := mmDropLegacyOverrides(); n > 0 {
+		guardLogf("model-manager: removed %d legacy per-account override(s) from the state file (feature retired)", n)
+	}
 }
 
 // resolveUsageReport fills usageReportURL/key from config → env → secret files.

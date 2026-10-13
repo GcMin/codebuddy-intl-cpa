@@ -674,10 +674,11 @@ type mmUpdateState struct {
 }
 
 // wbStateFile is the on-disk shape of workbuddy-state.json (frozen contract).
+// The former per-account layer ("authOverride") was removed on 13 Okt; files
+// that still carry it are cleaned by mmDropLegacyOverrides at configure time.
 type wbStateFile struct {
-	Realm        map[string]mmSettings `json:"realm"`
-	AuthOverride map[string]mmSettings `json:"authOverride"`
-	Update       mmUpdateState         `json:"update"`
+	Realm  map[string]mmSettings `json:"realm"`
+	Update mmUpdateState         `json:"update"`
 }
 
 var (
@@ -720,8 +721,7 @@ func defaultSettings(realm string) mmSettings {
 
 func emptyStateFile() *wbStateFile {
 	return &wbStateFile{
-		Realm:        map[string]mmSettings{},
-		AuthOverride: map[string]mmSettings{},
+		Realm: map[string]mmSettings{},
 	}
 }
 
@@ -754,9 +754,6 @@ func loadStateLocked() (*wbStateFile, error) {
 			if state.Realm == nil {
 				state.Realm = map[string]mmSettings{}
 			}
-			if state.AuthOverride == nil {
-				state.AuthOverride = map[string]mmSettings{}
-			}
 		}
 	case os.IsNotExist(err):
 		// First run: defaults, nothing to persist yet.
@@ -777,15 +774,11 @@ func loadState() (wbStateFile, error) {
 		return wbStateFile{}, err
 	}
 	out := wbStateFile{
-		Realm:        make(map[string]mmSettings, len(state.Realm)),
-		AuthOverride: make(map[string]mmSettings, len(state.AuthOverride)),
-		Update:       state.Update,
+		Realm:  make(map[string]mmSettings, len(state.Realm)),
+		Update: state.Update,
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)
-	}
-	for k, v := range state.AuthOverride {
-		out.AuthOverride[k] = cloneSettings(v)
 	}
 	return out, nil
 }
@@ -855,11 +848,8 @@ func atomicWriteFile(path string, data []byte) error {
 	return nil
 }
 
-// effectiveSettings resolves the three layers for one realm (and optional
-// account): default → realm → per-account override. The override replaces the
-// realm layer wholesale (the panel always saves a complete state, and the
-// scope selector is documented as "this account uses its own settings").
-func effectiveSettings(realm, authID string) mmSettings {
+// effectiveSettings resolves the settings of one realm: default → realm.
+func effectiveSettings(realm string) mmSettings {
 	out := defaultSettings(realm)
 	state, err := loadState()
 	if err != nil {
@@ -867,11 +857,6 @@ func effectiveSettings(realm, authID string) mmSettings {
 	}
 	if rs, ok := state.Realm[realm]; ok {
 		out = cloneSettings(rs)
-	}
-	if key := strings.TrimSpace(authID); key != "" {
-		if ov, ok := state.AuthOverride[key]; ok {
-			out = cloneSettings(ov)
-		}
 	}
 	return out
 }
@@ -887,25 +872,34 @@ func updateRealmSettings(realm string, s mmSettings) error {
 	})
 }
 
-// updateAuthSettings stores (or with remove=true deletes) the per-account
-// override (POST scope=acct/auth).
-func updateAuthSettings(authID string, s mmSettings, remove bool) error {
-	authID = strings.TrimSpace(authID)
-	if authID == "" {
-		return fmt.Errorf("missing auth id")
+// mmDropLegacyOverrides removes the retired per-account layer ("authOverride")
+// from an existing state file by rewriting it with the current shape. Returns
+// how many overrides were dropped (0 = file untouched).
+func mmDropLegacyOverrides() int {
+	raw, err := os.ReadFile(wbStatePath())
+	if err != nil {
+		return 0
 	}
-	return mutateState(func(st *wbStateFile) error {
-		if remove {
-			delete(st.AuthOverride, authID)
-			return nil
-		}
-		st.AuthOverride[authID] = normalizeSettings(s)
-		return nil
-	})
+	var legacy struct {
+		AuthOverride map[string]json.RawMessage `json:"authOverride"`
+	}
+	if json.Unmarshal(raw, &legacy) != nil {
+		return 0
+	}
+	var probe map[string]json.RawMessage
+	if json.Unmarshal(raw, &probe) != nil {
+		return 0
+	}
+	if _, present := probe["authOverride"]; !present {
+		return 0
+	}
+	if err := mutateState(func(*wbStateFile) error { return nil }); err != nil {
+		return 0
+	}
+	return len(legacy.AuthOverride)
 }
 
-// resetRealmSettings drops the realm layer (GET ?reset=1&realm=R). Per-account
-// overrides are separate records and stay untouched.
+// resetRealmSettings drops the realm layer (GET ?reset=1&realm=R).
 func resetRealmSettings(realm string) error {
 	if realm != realmGlobal && realm != realmCN {
 		return fmt.Errorf("unknown realm: %s", realm)
@@ -1029,19 +1023,7 @@ func modelsRealmPayload(realm, fetchAccount string) map[string]any {
 			fetchAccount = accounts[0]
 		}
 	}
-	settings := effectiveSettings(realm, fetchAccount)
-	// The panel's scope selector mirrors the effective layer: an override
-	// exists → scope "auth" for that account.
-	scope := "all"
-	overrideAuth := ""
-	if fetchAccount != "" {
-		if state, err := loadState(); err == nil {
-			if _, ok := state.AuthOverride[fetchAccount]; ok {
-				scope = "auth"
-				overrideAuth = fetchAccount
-			}
-		}
-	}
+	settings := effectiveSettings(realm)
 
 	var (
 		upstream  []upstreamModel
@@ -1070,8 +1052,6 @@ func modelsRealmPayload(realm, fetchAccount string) map[string]any {
 	}
 	prefixOn, prefixVal := settings.Prefix.On, settings.Prefix.Val
 	out := map[string]any{
-		"scope":          scope,
-		"override_auth":  overrideAuth,
 		"accounts":       orEmptyStrings(accounts),
 		"fetch_account":  fetchAccount,
 		"fetched_at":     fetchedAt,
@@ -1333,11 +1313,10 @@ func handleModelsConfigGet(req pluginapi.ManagementRequest) map[string]any {
 // deletes) the per-account override.
 func handleModelsConfigPost(req pluginapi.ManagementRequest) map[string]any {
 	var body struct {
-		Realm  string `json:"realm"`
-		Scope  string `json:"scope"`
-		Auth   string `json:"auth"`
-		Remove bool   `json:"remove"`
-		State  struct {
+		Realm string `json:"realm"`
+		Scope string `json:"scope"`
+		Auth  string `json:"auth"`
+		State struct {
 			Disabled           []string        `json:"disabled"`
 			Custom             []mmCustomModel `json:"custom"`
 			PrefixEnabled      bool            `json:"prefix_enabled"`
@@ -1367,16 +1346,16 @@ func handleModelsConfigPost(req pluginapi.ManagementRequest) map[string]any {
 	if err := validatePrefixSettings(realm, settings); err != nil {
 		return map[string]any{"error": err.Error()}
 	}
-	scope := strings.ToLower(strings.TrimSpace(body.Scope))
-	perAccount := scope == "acct" || scope == "auth" || scope == "account"
-	if perAccount {
-		if err := updateAuthSettings(body.Auth, settings, body.Remove); err != nil {
-			return map[string]any{"error": err.Error()}
-		}
-	} else {
-		if err := updateRealmSettings(realm, settings); err != nil {
-			return map[string]any{"error": err.Error()}
-		}
+	switch strings.ToLower(strings.TrimSpace(body.Scope)) {
+	case "", "all":
+	default:
+		// The per-account layer was removed (13 Okt): an old panel tab that
+		// still sends scope=acct/auth gets a clear error instead of a silent
+		// realm-wide write.
+		return map[string]any{"error": "per-account settings were removed; save for all accounts of the realm"}
+	}
+	if err := updateRealmSettings(realm, settings); err != nil {
+		return map[string]any{"error": err.Error()}
 	}
 	// Trigger a host model-registry reload so a prefix/disabled change is
 	// visible on /v1/models immediately (CPA 7.2.145 PATCH plugin-config hook).

@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -130,5 +131,39 @@ func TestUpstreamModelsForEmissionKeepsLastGood(t *testing.T) {
 	}
 	if upstreamModelsForEmission("workbuddy-never.json") != nil {
 		t.Fatal("never-fetched account must return nil")
+	}
+}
+
+// TestDropLegacyOverrides: a state file written before the per-account layer
+// was retired loses "authOverride" on startup while the realm layer and the
+// update section survive; a clean file is left untouched.
+func TestDropLegacyOverrides(t *testing.T) {
+	useTempStateDir(t)
+	legacy := `{"realm":{"global":{"disabled":["hy3"],"custom":[],"prefix":{"on":true,"val":""},"fallback":{"on":false,"model":""},"retry_fallback":{"on":false,"model":""}}},` +
+		`"authOverride":{"workbuddy-x.json":{"disabled":["glm-5.3"],"prefix":{"on":true,"val":""}}},"update":{"seenVersion":"0.9.6"}}`
+	if err := atomicWriteFile(wbStatePath(), []byte(legacy)); err != nil {
+		t.Fatal(err)
+	}
+	if n := mmDropLegacyOverrides(); n != 1 {
+		t.Fatalf("dropped = %d, want 1", n)
+	}
+	raw, err := os.ReadFile(wbStatePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "authOverride") {
+		t.Fatalf("authOverride still on disk: %s", raw)
+	}
+	resetModelsConfigCaches()
+	g := effectiveSettings(realmGlobal)
+	if len(g.Disabled) != 1 || g.Disabled[0] != "hy3" || !g.Prefix.On {
+		t.Fatalf("realm layer lost: %+v", g)
+	}
+	st, _ := loadState()
+	if st.Update.SeenVersion != "0.9.6" {
+		t.Fatalf("update section lost: %+v", st.Update)
+	}
+	if n := mmDropLegacyOverrides(); n != 0 {
+		t.Fatalf("second run dropped %d, want 0", n)
 	}
 }

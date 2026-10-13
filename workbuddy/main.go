@@ -782,7 +782,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	}
 	// Resolve oauth-model-alias (e.g. "point/deepseek-v4-flash") back to the
 	// real upstream model ID; the upstream rejects unknown alias IDs.
-	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthID, req.AuthAttributes)
+	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthAttributes)
 	started := time.Now()
 	authUID := ""
 	if sa.Account.UID != "" {
@@ -856,7 +856,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthID, req.AuthAttributes)
+	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthAttributes)
 	started := time.Now()
 	authUID := ""
 	if sa.Account.UID != "" {

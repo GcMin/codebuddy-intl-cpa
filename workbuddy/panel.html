@@ -416,10 +416,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   <div class="mm-body" id="mm-body-global">
     <div class="tabpane" data-pane="models">
       <div class="fetchline">
-        <span><span data-i18n="范围">范围</span>: <b id="mm-scopelabel-g">—</b> · <span data-i18n="账号覆盖">账号覆盖</span>: <b id="mm-ovr-g">—</b></span>
-        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-ovrbtn-g" onclick="mmDeleteOverride('global')" disabled><span data-i18n="删除账号覆盖">删除账号覆盖</span></button>
-      </div>
-      <div class="fetchline">
         <span id="mm-fetchstats-g">…</span>
         <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-refetch-g" onclick="mmRefetch('global')"><span data-i18n="↻ 重新拉取">↻ 重新拉取</span></button>
       </div>
@@ -485,8 +481,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     </div>
     <div class="right">
       <span class="mm-hint" id="mm-dirty-g"></span>
-      <button type="button" class="mm-save-all" id="mm-saveall-g" onclick="mmSave('global','all')"><span data-i18n="保存 — 所有国际账号">保存 — 所有国际账号</span></button>
-      <button type="button" class="sec" style="border-color:var(--ok-border)" onclick="mmSave('global','acct')"><span data-i18n="保存 — 仅此账号">保存 — 仅此账号</span></button>
+      <button type="button" class="mm-save-all" id="mm-saveall-g" onclick="mmSave('global')"><span data-i18n="保存 — 所有国际账号">保存 — 所有国际账号</span></button>
     </div>
   </div>
 </div>
@@ -505,10 +500,6 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
   </div>
   <div class="mm-body" id="mm-body-cn">
     <div class="tabpane" data-pane="models">
-      <div class="fetchline">
-        <span><span data-i18n="范围">范围</span>: <b id="mm-scopelabel-c">—</b> · <span data-i18n="账号覆盖">账号覆盖</span>: <b id="mm-ovr-c">—</b></span>
-        <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-ovrbtn-c" onclick="mmDeleteOverride('cn')" disabled><span data-i18n="删除账号覆盖">删除账号覆盖</span></button>
-      </div>
       <div class="fetchline">
         <span id="mm-fetchstats-c">…</span>
         <button type="button" class="sec" style="padding:4px 10px;font-size:12px" id="mm-refetch-c" onclick="mmRefetch('cn')"><span data-i18n="↻ 重新拉取">↻ 重新拉取</span></button>
@@ -575,8 +566,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     </div>
     <div class="right">
       <span class="mm-hint" id="mm-dirty-c"></span>
-      <button type="button" class="mm-save-all" id="mm-saveall-c" onclick="mmSave('cn','all')"><span data-i18n="保存 — 所有国内账号">保存 — 所有国内账号</span></button>
-      <button type="button" class="sec" style="border-color:var(--ok-border)" onclick="mmSave('cn','acct')"><span data-i18n="保存 — 仅此账号">保存 — 仅此账号</span></button>
+      <button type="button" class="mm-save-all" id="mm-saveall-c" onclick="mmSave('cn')"><span data-i18n="保存 — 所有国内账号">保存 — 所有国内账号</span></button>
     </div>
   </div>
 </div>
@@ -773,15 +763,9 @@ const PANEL_EN = {
   "前缀": "Prefix",
   "高级": "Advanced",
   "范围": "Scope",
-  "仅此账号": " only",
   "所有国际账号": "all Global accounts",
   "所有国内账号": "all CN accounts",
-  "账号覆盖": "per-account override",
   "无": "none",
-  " — 此账号用独立设置（覆盖 realm）": " — uses its own settings (overrides realm)",
-  "删除账号覆盖": "Delete account override",
-  "账号覆盖已删除 — 回到 realm 设置": "Account override deleted — back to realm settings",
-  "删除覆盖失败": "Failed to delete override",
   "↻ 重新拉取": "↻ Re-fetch",
   "重新拉取完成 — 上游 ∪ 目录已合并，新模型会出现": "Re-fetch done — upstream ∪ catalog merged, new models appear",
   "重新拉取失败": "Re-fetch failed",
@@ -861,8 +845,6 @@ const PANEL_EN = {
   "已保存 ✓": "saved ✓",
   "保存 — 所有国际账号": "Save — all Global accounts",
   "保存 — 所有国内账号": "Save — all CN accounts",
-  "保存 — 仅此账号": "Save — this account only",
-  "已保存（仅此账号）— 层级：账号 > realm > 默认": "Saved (this account only) — layering: account > realm > default",
   "已保存（全部 ": "Saved (all ",
   " 账号）": " accounts)",
   "国际": "Global",
@@ -1769,8 +1751,6 @@ if(getKey()){
    {
      realms: {
        global: {
-         scope: "all"|"auth",
-         override_auth: "",                    // AuthID yang punya override ("" = tidak ada)
          accounts: ["Intl-…", "…"],            // daftar akun realm ini (untuk fetch/test/save per-akun)
          fetch_account: "Intl-…",              // akun yang dipakai fetch
          fetched_at: "RFC3339", upstream: 31, catalog: 9, free: 9,
@@ -1785,7 +1765,7 @@ if(getKey()){
      },
      version: { current: "0.9.6", registry: { version, released_at, notes:[…], checksum, url } }
    }
-   POST /models/config  body: { realm, scope:"all"|"auth", auth:"", state:{ disabled:[…], custom:[…],
+   POST /models/config  body: { realm, scope:"all", auth:"<fetch account>", state:{ disabled:[…], custom:[…],
      prefix_enabled, prefix_value, fallback_enabled, fallback_model, retry_fallback_enabled, retry_fallback_model } }
    POST /models/refresh body: { realm, account }   → invalidate cache + fan-out fetch upstream (gratis)
    POST /models/test    body: { realm, account, model } → { ok, status, credit, error }
@@ -1849,7 +1829,7 @@ function mmStateFromCfg(realm, c){
 function mmRenderAll(){
   for(const r of ["global","cn"]){
     if(MM.cfg[r]){
-      mmRenderScope(r); mmRenderFetchStats(r); mmRenderModels(r);
+      mmRenderFetchStats(r); mmRenderModels(r);
       mmRenderPrefixUI(r); mmRenderFallbackUI(r); mmRenderPreview(r);
       mmRenderAdvancedPreviews(r);
     }
@@ -1857,19 +1837,6 @@ function mmRenderAll(){
 }
 
 /* ---------- scope / fetchline ---------- */
-function mmRenderScope(realm){
-  const c=MM.cfg[realm]; if(!c)return;
-  const g=realm==="global";
-  const sl=document.getElementById(g?"mm-scopelabel-g":"mm-scopelabel-c");
-  const ov=document.getElementById(g?"mm-ovr-g":"mm-ovr-c");
-  const ovb=document.getElementById(g?"mm-ovrbtn-g":"mm-ovrbtn-c");
-  if(sl) sl.textContent = c.scope==="auth"
-    ? ((c.fetch_account||"")+tr(" 仅此账号"))
-    : (g?tr(" 所有国际账号"):tr(" 所有国内账号"));
-  const hasOv=!!c.override_auth;
-  if(ov) ov.textContent = hasOv ? (c.override_auth+tr(" — 此账号用独立设置（覆盖 realm）")) : tr("无");
-  if(ovb) ovb.disabled=!hasOv;
-}
 function fmtAgo(iso){
   if(!iso)return "";
   const t=new Date(iso).getTime(); if(isNaN(t))return "";
@@ -2244,13 +2211,13 @@ function mmCopyYAML(realm){
   if(navigator.clipboard)navigator.clipboard.writeText(txt).then(()=>mmToast(tr("YAML 已复制到剪贴板")),()=>mmToast(tr("YAML 已显示 — 手动复制")));
   else mmToast(tr("YAML 已显示 — 手动复制"));
 }
-async function mmSave(realm,scope){
+async function mmSave(realm){
   const st=MM.state[realm];
   const c=MM.cfg[realm]||{};
   const body={
     realm:realm,
-    scope:scope,
-    auth:scope==="acct"?(c.fetch_account||c.override_auth||(c.accounts||[])[0]||""):"",
+    scope:"all",
+    auth:c.fetch_account||"",
     state:{
       disabled:[...st.disabled],
       custom:st.custom,
@@ -2270,19 +2237,10 @@ async function mmSave(realm,scope){
     if(d&&d.error)throw new Error(d.error);
     await mmGetConfig();
     mmClearDirty(realm);
-    const detail=scope==="acct"?tr("已保存（仅此账号）— 层级：账号 > realm > 默认"):(tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）"));
+    const detail=tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）");
     mmReloadToast(d,detail);
   }catch(e){ mmToast(tr("保存失败"),"err",e.message||String(e)); }
   finally{ if(bAll)bAll.disabled=false; }
-}
-async function mmDeleteOverride(realm){
-  const c=MM.cfg[realm]||{};
-  try{
-    const d=await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm,scope:"auth",auth:c.override_auth,remove:true})});
-    if(d&&d.error)throw new Error(d.error);
-    await mmGetConfig();
-    mmReloadToast(d,tr("账号覆盖已删除 — 回到 realm 设置"));
-  }catch(e){ mmToast(tr("删除覆盖失败"),"err",e.message||String(e)); }
 }
 // mmReloadToast reports the host model-registry reload outcome of a save: the
 // state is persisted either way, but only reload.status==="ok" means

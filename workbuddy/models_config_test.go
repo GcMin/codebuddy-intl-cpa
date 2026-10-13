@@ -121,11 +121,11 @@ func TestEffectiveSettingsLayering(t *testing.T) {
 	useTempStateDir(t)
 
 	// Layer 1: defaults.
-	def := effectiveSettings(realmCN, "")
+	def := effectiveSettings(realmCN)
 	if !def.Prefix.On || def.Prefix.Val != "cn/" {
 		t.Fatalf("CN default prefix = %+v, want on/cn/", def.Prefix)
 	}
-	if g := effectiveSettings(realmGlobal, ""); g.Prefix.On || g.Prefix.Val != "" {
+	if g := effectiveSettings(realmGlobal); g.Prefix.On || g.Prefix.Val != "" {
 		t.Fatalf("Global default prefix = %+v, want off/empty", g.Prefix)
 	}
 
@@ -140,7 +140,7 @@ func TestEffectiveSettingsLayering(t *testing.T) {
 	if err := updateRealmSettings(realmCN, realmState); err != nil {
 		t.Fatalf("updateRealmSettings: %v", err)
 	}
-	got := effectiveSettings(realmCN, "auth-a")
+	got := effectiveSettings(realmCN)
 	if len(got.Disabled) != 1 || got.Disabled[0] != "glm-5.3" {
 		t.Fatalf("realm disabled = %v", got.Disabled)
 	}
@@ -150,46 +150,14 @@ func TestEffectiveSettingsLayering(t *testing.T) {
 	if len(got.Custom) != 1 || got.Custom[0].ID != "my-model" {
 		t.Fatalf("realm custom = %+v", got.Custom)
 	}
-	// Another account of the same realm inherits the realm layer.
-	if other := effectiveSettings(realmCN, "auth-b"); len(other.Disabled) != 1 {
-		t.Fatalf("account without override must inherit the realm layer, got %+v", other)
-	}
-
-	// Layer 3: the per-account override wins wholesale.
-	override := mmSettings{
-		Disabled: []string{"kimi-k3-1"},
-		Prefix:   mmPrefixState{On: false},
-	}
-	if err := updateAuthSettings("auth-b", override, false); err != nil {
-		t.Fatalf("updateAuthSettings: %v", err)
-	}
-	gotB := effectiveSettings(realmCN, "auth-b")
-	if len(gotB.Disabled) != 1 || gotB.Disabled[0] != "kimi-k3-1" {
-		t.Fatalf("override disabled = %v", gotB.Disabled)
-	}
-	if gotB.Prefix.On {
-		t.Fatalf("override prefix should be off: %+v", gotB.Prefix)
-	}
-	// auth-a still sees the realm layer.
-	if a := effectiveSettings(realmCN, "auth-a"); len(a.Disabled) != 1 || a.Disabled[0] != "glm-5.3" {
-		t.Fatalf("auth-a lost the realm layer: %v", a.Disabled)
-	}
-	// Removing the override falls back to the realm layer.
-	if err := updateAuthSettings("auth-b", mmSettings{}, true); err != nil {
-		t.Fatalf("remove override: %v", err)
-	}
-	if b := effectiveSettings(realmCN, "auth-b"); len(b.Disabled) != 1 || b.Disabled[0] != "glm-5.3" {
-		t.Fatalf("after remove, auth-b = %v", b.Disabled)
-	}
-
 	// A realm with no stored layer keeps the defaults.
-	if g := effectiveSettings(realmGlobal, "auth-a"); len(g.Disabled) != 0 {
+	if g := effectiveSettings(realmGlobal); len(g.Disabled) != 0 {
 		t.Fatalf("global should have no disabled models, got %v", g.Disabled)
 	}
 }
 
 // TestResetRealmSettingsRestoresDefaults checks GET ?reset=1 semantics at the
-// state layer: realm layer gone, per-account overrides untouched.
+// state layer: realm layer gone, defaults back.
 func TestResetRealmSettingsRestoresDefaults(t *testing.T) {
 	useTempStateDir(t)
 	if err := updateRealmSettings(realmCN, mmSettings{
@@ -198,21 +166,15 @@ func TestResetRealmSettingsRestoresDefaults(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("updateRealmSettings: %v", err)
 	}
-	if err := updateAuthSettings("auth-keep", mmSettings{Disabled: []string{"hy3"}}, false); err != nil {
-		t.Fatalf("updateAuthSettings: %v", err)
-	}
 	if err := resetRealmSettings(realmCN); err != nil {
 		t.Fatalf("resetRealmSettings: %v", err)
 	}
-	got := effectiveSettings(realmCN, "")
+	got := effectiveSettings(realmCN)
 	if !got.Prefix.On || got.Prefix.Val != "cn/" {
 		t.Fatalf("after reset prefix = %+v, want on/cn/", got.Prefix)
 	}
 	if len(got.Disabled) != 0 {
 		t.Fatalf("after reset disabled = %v, want empty", got.Disabled)
-	}
-	if kept := effectiveSettings(realmCN, "auth-keep"); len(kept.Disabled) != 1 || kept.Disabled[0] != "hy3" {
-		t.Fatalf("per-account override must survive a realm reset: %v", kept.Disabled)
 	}
 	if err := resetRealmSettings("bogus"); err == nil {
 		t.Fatal("reset of an unknown realm must fail")
@@ -248,8 +210,7 @@ func TestStateFileAtomicSave(t *testing.T) {
 			Fallback      map[string]any `json:"fallback"`
 			RetryFallback map[string]any `json:"retry_fallback"`
 		} `json:"realm"`
-		AuthOverride map[string]any `json:"authOverride"`
-		Update       map[string]any `json:"update"`
+		Update map[string]any `json:"update"`
 	}
 	if err := json.Unmarshal(raw, &onDisk); err != nil {
 		t.Fatalf("state file is not the contract JSON: %v\n%s", err, raw)
@@ -284,7 +245,7 @@ func TestStateFileAtomicSave(t *testing.T) {
 
 	// A fresh process (cache cleared) must read the same values.
 	resetModelsConfigCaches()
-	got := effectiveSettings(realmGlobal, "")
+	got := effectiveSettings(realmGlobal)
 	if len(got.Disabled) != 1 || got.Disabled[0] != "gpt-6-astra" || !got.Prefix.On {
 		t.Fatalf("reloaded settings = %+v", got)
 	}
@@ -308,7 +269,7 @@ func TestStateFileCorruptRecovery(t *testing.T) {
 	if err := os.WriteFile(statePath, []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("seed corrupt file: %v", err)
 	}
-	got := effectiveSettings(realmCN, "")
+	got := effectiveSettings(realmCN)
 	if !got.Prefix.On {
 		t.Fatalf("corrupt file should fall back to defaults, got %+v", got)
 	}
@@ -655,14 +616,11 @@ func TestModelsConfigEndpointGet(t *testing.T) {
 	if !ok {
 		t.Fatalf("no global realm payload: %+v", realms)
 	}
-	for _, key := range []string{"scope", "override_auth", "accounts", "fetch_account", "fetched_at",
+	for _, key := range []string{"accounts", "fetch_account", "fetched_at",
 		"upstream", "catalog", "free", "prefix", "disabled", "custom", "fallback", "retry_fallback", "models"} {
 		if _, ok := global[key]; !ok {
 			t.Fatalf("global payload misses %q: %+v", key, global)
 		}
-	}
-	if global["scope"] != "all" || global["override_auth"] != "" {
-		t.Fatalf("scope/override = %v/%v", global["scope"], global["override_auth"])
 	}
 	if global["fetch_account"] != "Intl-zxdrwin0602" {
 		t.Fatalf("fetch_account = %v", global["fetch_account"])
@@ -731,7 +689,7 @@ func TestModelsConfigEndpointPost(t *testing.T) {
 	if out := post(`{"realm":"global","scope":"all","state":{"disabled":["gpt-6-astra"],"custom":[{"id":"mine","name":"Mine","ctx":"128k"}],"prefix_enabled":true,"prefix_value":"cb/","fallback_enabled":true,"fallback_model":"glm-5.2","retry_fallback_enabled":true,"retry_fallback_model":"glm-5.1"}}`); out["error"] != nil {
 		t.Fatalf("save realm state: %v", out["error"])
 	}
-	got := effectiveSettings(realmGlobal, "")
+	got := effectiveSettings(realmGlobal)
 	if len(got.Disabled) != 1 || !got.Prefix.On || !got.Fallback.On || !got.RetryFallback.On {
 		t.Fatalf("realm state not saved: %+v", got)
 	}
@@ -739,30 +697,21 @@ func TestModelsConfigEndpointPost(t *testing.T) {
 		t.Fatalf("fallback models = %+v / %+v", got.Fallback, got.RetryFallback)
 	}
 
-	// Per-account override + remove.
-	if out := post(`{"realm":"global","scope":"acct","auth":"auth-1","state":{"disabled":["hy3"],"prefix_enabled":false,"prefix_value":"cb/"}}`); out["error"] != nil {
-		t.Fatalf("save override: %v", out["error"])
+	// The per-account layer is retired: scope=acct/auth is rejected and the
+	// realm layer stays untouched.
+	if out := post(`{"realm":"global","scope":"acct","auth":"auth-1","state":{"disabled":["hy3"]}}`); out["error"] == nil {
+		t.Fatal("scope=acct must be rejected")
 	}
-	if ov := effectiveSettings(realmGlobal, "auth-1"); len(ov.Disabled) != 1 || ov.Disabled[0] != "hy3" || ov.Prefix.On {
-		t.Fatalf("override = %+v", ov)
-	}
-	// The panel turns the prefix value off → stored empty.
-	if ov := effectiveSettings(realmGlobal, "auth-1"); ov.Prefix.Val != "" {
-		t.Fatalf("prefix value must be cleared when the toggle is off: %q", ov.Prefix.Val)
+	if g := effectiveSettings(realmGlobal); len(g.Disabled) != 1 || g.Disabled[0] != "gpt-6-astra" {
+		t.Fatalf("rejected per-account save must not touch the realm layer: %+v", g)
 	}
 	payload := handleModelsConfigGet(pluginapi.ManagementRequest{
 		Method: http.MethodGet, Path: "/x/models/config",
-		Query: map[string][]string{"realm": {"global"}, "fetch_account": {"auth-1"}},
+		Query: map[string][]string{"realm": {"global"}},
 	})
 	global := payload["realms"].(map[string]any)[realmGlobal].(map[string]any)
-	if global["scope"] != "auth" || global["override_auth"] != "auth-1" {
-		t.Fatalf("GET did not report the override: %+v", global)
-	}
-	if out := post(`{"realm":"global","scope":"acct","auth":"auth-1","remove":true}`); out["error"] != nil {
-		t.Fatalf("remove override: %v", out["error"])
-	}
-	if ov := effectiveSettings(realmGlobal, "auth-1"); len(ov.Disabled) != 1 || ov.Disabled[0] != "gpt-6-astra" {
-		t.Fatalf("after remove the realm layer must apply: %+v", ov)
+	if _, has := global["override_auth"]; has {
+		t.Fatalf("GET must not report override fields any more: %+v", global)
 	}
 
 	// Bad realm is rejected and nothing is written.

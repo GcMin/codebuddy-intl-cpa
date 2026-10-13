@@ -224,10 +224,10 @@ func TestPrefixRoutingCustomRealm(t *testing.T) {
 		t.Fatalf("seed cn prefix: %v", err)
 	}
 
-	if got, ok := stripDynamicPrefix("yes/deepseek-v4.1-flash", realmGlobal, ""); !ok || got != "deepseek-v4.1-flash" {
+	if got, ok := stripDynamicPrefix("yes/deepseek-v4.1-flash", realmGlobal); !ok || got != "deepseek-v4.1-flash" {
 		t.Fatalf("global custom strip = %q/%v", got, ok)
 	}
-	if got := resolveUpstreamModel("yes/deepseek-v4.1-flash", realmGlobal, "", nil); got != "deepseek-v4.1-flash" {
+	if got := resolveUpstreamModel("yes/deepseek-v4.1-flash", realmGlobal, nil); got != "deepseek-v4.1-flash" {
 		t.Fatalf("resolveUpstreamModel global custom = %q", got)
 	}
 	if isCNModelID("yes/deepseek-v4.1-flash") {
@@ -250,44 +250,6 @@ func TestPrefixRoutingCustomRealm(t *testing.T) {
 	}
 	if got := mmPrefixRealm("glm-5.3"); got != "" {
 		t.Fatalf("mmPrefixRealm(bare) = %q, want empty", got)
-	}
-}
-
-// TestPerAccountOverrideEmissionAndStrip covers T3: an account override emits
-// and strips its own prefix while a peer account keeps the realm prefix.
-func TestPerAccountOverrideEmissionAndStrip(t *testing.T) {
-	useTempStateDir(t)
-	if err := updateAuthSettings("auth-a", mmSettings{
-		Prefix:   mmPrefixState{On: true, Val: "acctA"},
-		Disabled: []string{"glm-5.3"},
-	}, false); err != nil {
-		t.Fatalf("seed override: %v", err)
-	}
-
-	emittedA := applyDynamicPrefix([]pluginapi.ModelInfo{{ID: "glm-5.3"}, {ID: "hy3"}}, realmCN, "auth-a")
-	if emittedA[0].ID != "acctA/glm-5.3" {
-		t.Fatalf("override emission = %q, want acctA/glm-5.3", emittedA[0].ID)
-	}
-	emittedB := applyDynamicPrefix([]pluginapi.ModelInfo{{ID: "glm-5.3"}}, realmCN, "auth-b")
-	if emittedB[0].ID != "cn/glm-5.3" {
-		t.Fatalf("peer emission = %q, want cn/glm-5.3", emittedB[0].ID)
-	}
-
-	if got, ok := stripDynamicPrefix("acctA/glm-5.3", realmCN, "auth-a"); !ok || got != "glm-5.3" {
-		t.Fatalf("override strip = %q/%v, want glm-5.3/true", got, ok)
-	}
-	if got := resolveUpstreamModel("acctA/glm-5.3", realmCN, "auth-a", nil); got != "glm-5.3" {
-		t.Fatalf("override resolve = %q, want glm-5.3", got)
-	}
-	if _, ok := stripDynamicPrefix("acctA/glm-5.3", realmCN, "auth-b"); ok {
-		t.Fatal("peer account must not strip another account's override prefix")
-	}
-
-	if kept := mmFilterDisabled([]pluginapi.ModelInfo{{ID: "glm-5.3"}}, realmCN, "auth-a"); len(kept) != 0 {
-		t.Fatalf("override disabled must apply to auth-a: %+v", kept)
-	}
-	if kept := mmFilterDisabled([]pluginapi.ModelInfo{{ID: "glm-5.3"}}, realmCN, "auth-b"); len(kept) != 1 {
-		t.Fatalf("realm layer must apply to auth-b: %+v", kept)
 	}
 }
 

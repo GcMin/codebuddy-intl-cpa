@@ -430,11 +430,11 @@ func cacheModelAliases(host pluginapi.HostConfigSummary) {
 }
 
 // resolveUpstreamModel maps an aliased requested model back to the real
-// upstream model ID. realm/authID describe the account that will execute the
-// request (accountRegion(sa) + req.AuthID); attributes are only a fallback
-// realm hint when the executing auth is unknown. Returns the input unchanged
+// upstream model ID. realm is the realm of the account that will execute the
+// request (accountRegion(sa)); attributes are only a fallback realm hint when
+// the executing auth is unknown. Returns the input unchanged
 // when nothing matches.
-func resolveUpstreamModel(model, realm, authID string, attributes map[string]string) string {
+func resolveUpstreamModel(model, realm string, attributes map[string]string) string {
 	m := strings.TrimSpace(model)
 	if m == "" {
 		return model
@@ -442,7 +442,7 @@ func resolveUpstreamModel(model, realm, authID string, attributes map[string]str
 	if realm == "" {
 		realm = mmRealmHintFromAttributes(attributes)
 	}
-	if upstreamModel, prefixed := stripDynamicPrefix(m, realm, authID); prefixed {
+	if upstreamModel, prefixed := stripDynamicPrefix(m, realm); prefixed {
 		return upstreamModel
 	}
 	key := strings.ToLower(m)
@@ -559,8 +559,8 @@ func handleModelStatic(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	cacheModelAliases(req.Host)
-	models := mmFilterDisabled(wbModels(), realmGlobal, "")
-	models = append(models, applyDynamicPrefix(mmFilterDisabled(wbCNModels(), realmCN, ""), realmCN, "")...)
+	models := mmFilterDisabled(wbModels(), realmGlobal)
+	models = append(models, applyDynamicPrefix(mmFilterDisabled(wbCNModels(), realmCN), realmCN)...)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
@@ -590,8 +590,8 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 	// Model Manager: emit the same union the panel shows (dynamic ∪ catalog ∪
 	// upstream ∪ custom), then disabled filter + dynamic per-realm prefix.
 	models = mmEmissionModels(models, realm, authID)
-	models = mmFilterDisabled(models, realm, authID)
-	models = applyDynamicPrefix(models, realm, authID)
+	models = mmFilterDisabled(models, realm)
+	models = applyDynamicPrefix(models, realm)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
