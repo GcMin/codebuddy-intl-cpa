@@ -1,7 +1,7 @@
 """Accounting/fingerprint analysis only. Never export arbitrary JSON fields."""
 import hashlib
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 STABLE_FIELDS = ('system_hash', 'first_user_hash', 'tools_hash', 'options_hash')
@@ -142,6 +142,9 @@ def studies(rows):
                 'comparison': compare(prev, row) if prev else None}
         item['request']['account_changed'] = prev.get('auth_id') != row.get('auth_id') if prev else None
         past = history.get(key, [])
+        # Stronger settings attribution is available only on newly instrumented
+        # records. Old combined hashes remain useful but cannot name a setting.
+        item['changed_settings'] = item['comparison']['upstream']['changed_options'] if prev else None
         # A fallback cache read can identify an older accounted prefix. This is
         # descriptive evidence; matching token totals does not prove cache IDs.
         older = next((p for p in reversed(past) if p.get('auth_id') == row.get('auth_id')
