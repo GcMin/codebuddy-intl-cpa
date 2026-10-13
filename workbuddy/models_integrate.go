@@ -483,6 +483,69 @@ func mmFilterDisabled(models []pluginapi.ModelInfo, realm, authID string) []plug
 	return out
 }
 
+// mmEmissionUpstreamFn is the test seam for the per-account upstream catalog
+// used by /v1/models emission.
+var mmEmissionUpstreamFn = upstreamModelsForEmission
+
+// upstreamModelsForEmission returns one account's upstream catalog (the same
+// /v2 ∪ /v3/config fetch + 5 min cache the panel uses). When a refresh fails it
+// keeps serving the last good result of any age, so a flaky upstream never
+// shrinks /v1/models; nil when the account was never fetched successfully.
+func upstreamModelsForEmission(authID string) []upstreamModel {
+	authID = strings.TrimSpace(authID)
+	if authID == "" {
+		return nil
+	}
+	if models, _, err := upstreamModelsCached(authID); err == nil {
+		return models
+	}
+	mmFetchCache.mu.Lock()
+	defer mmFetchCache.mu.Unlock()
+	if e, ok := mmFetchCache.entries[authID]; ok {
+		return append([]upstreamModel(nil), e.models...)
+	}
+	return nil
+}
+
+// mmEmissionModels builds the client-facing model list of one account as the
+// union the Model Manager panel shows (PLAN-0907 decision 2, CB-039):
+// base (dynamic discovery / static fallback) ∪ catalog ∪ upstream ∪ custom.
+// Utility models (no public chat billing) stay out — the panel labels them
+// "default off"; a user who wants one can add it as a custom model. Earlier
+// entries win on duplicate IDs (case-insensitive).
+func mmEmissionModels(base []pluginapi.ModelInfo, realm, authID string) []pluginapi.ModelInfo {
+	out := make([]pluginapi.ModelInfo, 0, len(base)+48)
+	seen := make(map[string]bool, len(base)+48)
+	add := func(m pluginapi.ModelInfo) {
+		key := strings.ToLower(strings.TrimSpace(m.ID))
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, m)
+	}
+	for _, m := range base {
+		add(m)
+	}
+	for _, m := range catalogModelInfos(realm) {
+		add(m)
+	}
+	for _, u := range mmEmissionUpstreamFn(authID) {
+		if u.Util {
+			continue
+		}
+		add(modelDefInfo(u.modelDef))
+	}
+	for _, c := range effectiveSettings(realm, authID).Custom {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			name = c.ID
+		}
+		add(pluginapi.ModelInfo{ID: strings.TrimSpace(c.ID), Name: name, OwnedBy: providerName, SupportedGenerationMethods: []string{"chat"}})
+	}
+	return out
+}
+
 // mmKnownPrefixes lists every prefix the plugin can emit for a realm+account:
 // the effective prefix of that layer, the other realm's realm-layer prefix and
 // the two legacy defaults (cn/ cb/). Used to strip before disabled lookups and

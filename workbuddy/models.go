@@ -575,22 +575,21 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 	// req.AuthProvider back would silently drop the model list whenever the
 	// auth file carries a non-canonical provider string.
 	cacheModelAliases(req.Host)
-	models := fetchDynamicModelsFromStorage(req.AuthID, req.StorageJSON)
-	// Model Manager: dynamic per-realm prefix (cn/ cb/ custom / bare) replacing
-	// the hardcoded prefixCNModels; also union the Model Manager catalog so the
-	// hidden/static models stay visible to the client.
 	realm := mmRealmForAuth(req.StorageJSON)
 	authID := strings.TrimSpace(req.AuthID)
-	extra := catalogModelInfos(realm)
-	seen := make(map[string]bool, len(models))
-	for _, m := range models {
-		seen[strings.ToLower(m.ID)] = true
+	var models []pluginapi.ModelInfo
+	if realm == realmGlobal {
+		// The legacy Global discovery path (/console/enterprises/personal/models)
+		// answers 500 for every Global token (CB-024, CB-039): calling it only
+		// burns a request before falling back. The live Global catalog comes from
+		// the Model Manager fetch (/v2 ∪ /v3/config) in mmEmissionModels.
+		models = fallbackModelsForAuth(req.StorageJSON)
+	} else {
+		models = fetchDynamicModelsFromStorage(req.AuthID, req.StorageJSON)
 	}
-	for _, m := range extra {
-		if !seen[strings.ToLower(m.ID)] {
-			models = append(models, m)
-		}
-	}
+	// Model Manager: emit the same union the panel shows (dynamic ∪ catalog ∪
+	// upstream ∪ custom), then disabled filter + dynamic per-realm prefix.
+	models = mmEmissionModels(models, realm, authID)
 	models = mmFilterDisabled(models, realm, authID)
 	models = applyDynamicPrefix(models, realm, authID)
 	models = filterExcludedModels(models, req.Host)
