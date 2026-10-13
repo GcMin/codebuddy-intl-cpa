@@ -87,8 +87,8 @@
   selecting the earliest alternative. Exhausted/disabled accounts are not probes.
   Fix the former pool/loop mismatch that logged "retrying" but skipped the attempt.
 - Add real-executor mock tests for prefixed/bare non-stream, sync-stream and async
-  pump recovery/rejection, concurrent bursts, probe single-flight, aliases, queue
-  cancellation and credit/model isolation. No paid upstream burst test.
+  pump recovery/rejection, concurrent bursts, probe single-flight, aliases,
+  busy-account fallback and credit/model isolation. No paid upstream burst test.
 - Add fixed-name per-option digests and multi-log cache study tools. Detect partial
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.

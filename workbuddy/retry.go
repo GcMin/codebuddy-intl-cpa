@@ -522,7 +522,7 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contex
 		outcome, status, body, err := func() (attemptOutcome, int, string, error) {
 			defer release()
 			outcome, status, body, err := attemptFn(cand)
-			// Publish quarantine before another queued request takes the slot.
+			// Publish quarantine before another request can take the freed slot.
 			if outcome == outcomeRateLimited || outcome == outcomeAccountExhausted {
 				markCandidateUnavailable(cand, outcome, body)
 			} else if outcome == outcomeSuccess {
