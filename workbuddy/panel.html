@@ -868,6 +868,8 @@ const PANEL_EN = {
   "国际": "Global",
   "国内": "CN",
   "保存失败": "Save failed",
+  "已保存 · 已实时生效": "Saved · live now",
+  "已保存，但需重启 CPA 才会更新 /v1/models": "Saved, but CPA must restart before /v1/models updates",
   "此模型已不在上游目录，也没有其他价格来源 → 上游未公布。按 Test 验证（11133 = provider 拒绝）。": "No longer in the upstream catalog and no other price source → upstream doesn't publish. Press Test to verify (11133 = rejected by provider).",
   "~ = 来自归档/推断（不是上游实时 — 模型已不在目录），可能过时。按 Test 验证。": "~ = from archive/inference (not upstream live — model left the catalog), may be outdated. Press Test to verify.",
   "上游内部/工具模型 — 没有公开 chat 计费。": "Upstream internal/utility model — no public chat billing.",
@@ -2202,10 +2204,11 @@ function mmClearDirty(realm){
 }
 async function mmReset(realm){
   try{
-    await api("/models/config?reset=1&realm="+encodeURIComponent(realm));
+    const d=await api("/models/config?reset=1&realm="+encodeURIComponent(realm));
+    if(d&&d.error)throw new Error(d.error);
     await mmGetConfig();
     mmClearDirty(realm);
-    mmToast((realm==="global"?tr("Global"):tr("CN"))+tr(" 已恢复默认"));
+    mmReloadToast(d,(realm==="global"?tr("Global"):tr("CN"))+tr(" 已恢复默认"));
   }catch(e){ mmToast(tr("重置失败"),"err",e.message||String(e)); }
 }
 function mmYamlFor(realm){
@@ -2267,18 +2270,27 @@ async function mmSave(realm,scope){
     if(d&&d.error)throw new Error(d.error);
     await mmGetConfig();
     mmClearDirty(realm);
-    if(scope==="acct")mmToast(tr("已保存（仅此账号）— 层级：账号 > realm > 默认"));
-    else mmToast(tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）"));
+    const detail=scope==="acct"?tr("已保存（仅此账号）— 层级：账号 > realm > 默认"):(tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）"));
+    mmReloadToast(d,detail);
   }catch(e){ mmToast(tr("保存失败"),"err",e.message||String(e)); }
   finally{ if(bAll)bAll.disabled=false; }
 }
 async function mmDeleteOverride(realm){
   const c=MM.cfg[realm]||{};
   try{
-    await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm,scope:"auth",auth:c.override_auth,remove:true})});
+    const d=await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({realm:realm,scope:"auth",auth:c.override_auth,remove:true})});
+    if(d&&d.error)throw new Error(d.error);
     await mmGetConfig();
-    mmToast(tr("账号覆盖已删除 — 回到 realm 设置"));
+    mmReloadToast(d,tr("账号覆盖已删除 — 回到 realm 设置"));
   }catch(e){ mmToast(tr("删除覆盖失败"),"err",e.message||String(e)); }
+}
+// mmReloadToast reports the host model-registry reload outcome of a save: the
+// state is persisted either way, but only reload.status==="ok" means
+// /v1/models already reflects it. Anything else needs a CPA restart.
+function mmReloadToast(d,detail){
+  const st=d&&d.reload&&d.reload.status;
+  if(st==="ok")mmToast(tr("已保存 · 已实时生效"),"ok",detail||"");
+  else mmToast(tr("已保存，但需重启 CPA 才会更新 /v1/models"),"warn",detail||"");
 }
 
 /* ---------- modal open/close/tab ---------- */

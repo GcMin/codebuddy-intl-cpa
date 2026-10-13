@@ -1318,6 +1318,9 @@ func handleModelsConfigGet(req pluginapi.ManagementRequest) map[string]any {
 		if err := resetRealmSettings(realm); err != nil {
 			return map[string]any{"error": err.Error()}
 		}
+		payload := modelsConfigPayload(fetch)
+		payload["reload"] = mmTriggerHostReload(req.Headers)
+		return payload
 	}
 	return modelsConfigPayload(fetch)
 }
@@ -1361,6 +1364,9 @@ func handleModelsConfigPost(req pluginapi.ManagementRequest) map[string]any {
 		Fallback:      mmFallbackState{On: body.State.FallbackEnabled, Model: body.State.FallbackModel},
 		RetryFallback: mmFallbackState{On: body.State.RetryFallbackOn, Model: body.State.RetryFallbackModel},
 	}
+	if err := validatePrefixSettings(realm, settings); err != nil {
+		return map[string]any{"error": err.Error()}
+	}
 	scope := strings.ToLower(strings.TrimSpace(body.Scope))
 	perAccount := scope == "acct" || scope == "auth" || scope == "account"
 	if perAccount {
@@ -1372,13 +1378,18 @@ func handleModelsConfigPost(req pluginapi.ManagementRequest) map[string]any {
 			return map[string]any{"error": err.Error()}
 		}
 	}
-	// Nudge the host model registry so a prefix/disabled change is visible on
-	// /v1/models immediately (host.auth.save of an identical file reloads the
-	// clients). Cosmetic no-op on the credential itself.
-	mmNudgeModelRegistry(realm)
+	// Trigger a host model-registry reload so a prefix/disabled change is
+	// visible on /v1/models immediately (CPA 7.2.145 PATCH plugin-config hook).
+	// A reload failure never fails the save: the state is already persisted.
+	reload := mmTriggerHostReload(req.Headers)
+	if reload.Status != "ok" {
+		guardLogf("model-manager: live reload %s (http=%d): %s", reload.Status, reload.HTTP, reload.Error)
+	}
 	// The panel refreshes with a GET right after saving; return the fresh
 	// payload anyway so a failed refresh still shows the saved state.
-	return modelsConfigPayload(map[string]string{realm: strings.TrimSpace(body.Auth)})
+	payload := modelsConfigPayload(map[string]string{realm: strings.TrimSpace(body.Auth)})
+	payload["reload"] = reload
+	return payload
 }
 
 // modelsConfigResetRequest reports whether the request is the GET ?reset=1

@@ -358,6 +358,8 @@ func wbRegistration() registration {
 				{Name: "scheduler_mode", Type: pluginapi.ConfigFieldTypeEnum, EnumValues: []string{schedulerModeOff, schedulerModeCredits}, Description: "Multi-account selection: off (defer to built-in, default) or credits (pick highest remaining). WARNING: when off + lifecycle_auto=false, exhausted accounts may still be routed — enable lifecycle_auto or set scheduler_mode=credits."},
 				{Name: "usage_report_url", Type: pluginapi.ConfigFieldTypeString, Description: "Optional override of CPAMP usage import URL (default http://cpa-manager-plus:18317/v0/management/usage/import; also env USAGE_REPORT_URL)."},
 				{Name: "usage_report_key", Type: pluginapi.ConfigFieldTypeString, Description: "Optional CPAMP admin key override. Prefer auto-detect from env CPAMP_ADMIN_KEY / USAGE_REPORT_KEY or secret file /run/secrets/cpamp_admin_key."},
+				{Name: "self_url", Type: pluginapi.ConfigFieldTypeString, Description: "Base URL of this CPA host's management API used for the post-save model-registry live reload (default http://127.0.0.1:8317; also env WB_SELF_URL). Set the actual port on non-default deployments."},
+				{Name: "mm_live_reload", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Trigger a host model-registry reload after saving Model Manager settings so /v1/models updates without a CPA restart (default true)."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -771,7 +773,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	req.StorageJSON = routedStorage
-	if isCNModelID(req.Model) && pool.Primary != nil {
+	if mmPrefixRealm(req.Model) != "" && pool.Primary != nil {
 		req.AuthID = pool.Primary.AuthID
 	}
 	sa, err := parseStored(req.StorageJSON)
@@ -780,7 +782,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	}
 	// Resolve oauth-model-alias (e.g. "point/deepseek-v4-flash") back to the
 	// real upstream model ID; the upstream rejects unknown alias IDs.
-	upstreamModel := resolveUpstreamModel(req.Model, req.AuthAttributes)
+	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthID, req.AuthAttributes)
 	started := time.Now()
 	authUID := ""
 	if sa.Account.UID != "" {
@@ -847,14 +849,14 @@ func handleExecStream(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	req.StorageJSON = routedStorage
-	if isCNModelID(req.Model) && pool.Primary != nil {
+	if mmPrefixRealm(req.Model) != "" && pool.Primary != nil {
 		req.AuthID = pool.Primary.AuthID
 	}
 	sa, err := parseStored(req.StorageJSON)
 	if err != nil {
 		return nil, err
 	}
-	upstreamModel := resolveUpstreamModel(req.Model, req.AuthAttributes)
+	upstreamModel := resolveUpstreamModel(req.Model, accountRegion(sa), req.AuthID, req.AuthAttributes)
 	started := time.Now()
 	authUID := ""
 	if sa.Account.UID != "" {
