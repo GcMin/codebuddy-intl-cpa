@@ -29,6 +29,10 @@
   snapshots or discard a draft opened while Save was pending.
 - Prefix ON displays `cb/` or `cn/` for an empty saved value; custom prefixes
   retain their typed value. Provider group headings remain readable in dark mode.
+- Fetch-account dropdown labels now match CodeBuddy account nicknames while
+  option values remain stable record IDs. New imports need no manual name map.
+  A separate source patch for CPAMC v1.24.2 makes Auth Files cards use the host's
+  WorkBuddy label instead of UUID filenames; see `patches/README.md`.
 - Removed the legacy `models` config field (declared since 0.9.2 but never
   read — the Model Manager replaces it).
 

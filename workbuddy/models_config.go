@@ -973,6 +973,36 @@ type mmModelRow struct {
 // accountsForRealm lists the AuthIDs of one realm. Seam for tests: the host
 // auth RPC is unavailable outside a running CPA host.
 var mmAccountsForRealmFn = accountsForRealm
+var mmAccountLabelsForRealmFn = accountLabelsForRealm
+
+// Account values stay host record IDs. Labels are display-only, derived from
+// stored nicknames on every refresh, including newly imported credentials.
+func accountLabelsForRealm(realm string) map[string]string {
+	labels := map[string]string{}
+	files, err := authListSource()
+	if err != nil {
+		return labels
+	}
+	for _, f := range files {
+		sa, err := authGetSource(f.AuthIndex)
+		if err != nil || sa == nil || accountRegion(sa) != realm {
+			continue
+		}
+		id := firstNonEmpty(strings.TrimSpace(f.ID), strings.TrimSpace(f.AuthIndex))
+		if id == "" {
+			continue
+		}
+		label := strings.TrimSpace(sa.Account.Nickname)
+		if label == "" {
+			label = strings.TrimSpace(f.Label)
+			for _, suffix := range []string{" [Global]", " [CN]"} {
+				label = strings.TrimSuffix(label, suffix)
+			}
+		}
+		labels[id] = firstNonEmpty(label, id)
+	}
+	return labels
+}
 
 // accountsForRealm lists the AuthIDs of one realm.
 func accountsForRealm(realm string) []string {
@@ -1053,6 +1083,7 @@ func modelsRealmPayload(realm, fetchAccount string) map[string]any {
 	prefixOn, prefixVal := settings.Prefix.On, settings.Prefix.Val
 	out := map[string]any{
 		"accounts":       orEmptyStrings(accounts),
+		"account_labels": mmAccountLabelsForRealmFn(realm),
 		"fetch_account":  fetchAccount,
 		"fetched_at":     fetchedAt,
 		"upstream":       len(upstream),

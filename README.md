@@ -147,6 +147,11 @@ that realm; per-account overrides are retired. Save/Reset reports whether CPA
 reloaded `/v1/models` without a restart. Re-fetch updates the catalog while
 preserving unsaved drafts; closing the popup discards those drafts.
 
+Fetch-account dropdowns display the same nickname as account cards; requests
+keep their stable account IDs. For the host **Auth Files** cards, which belong
+to CPAMC rather than this plugin, see the [CPAMC source patch](patches/README.md).
+It uses the WorkBuddy label for current and future imports without renaming files.
+
 The **Test** button sends a paid upstream chat request. Re-fetch uses catalog
 GETs without chat credits. The update widget displays the running and latest
 release versions; skipped releases persist beside Model Manager state.

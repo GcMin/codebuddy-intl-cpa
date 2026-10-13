@@ -1,0 +1,159 @@
+diff --git a/src/features/authFiles/identity.ts b/src/features/authFiles/identity.ts
+index aea74f3..e75baf6 100644
+--- a/src/features/authFiles/identity.ts
++++ b/src/features/authFiles/identity.ts
+@@ -6,7 +6,7 @@
+  * 单行尾部省略保留下来的恰好是类型徽章已表达过的 provider 前缀。
+  *
+  * 两条红线：
+- * 1. 只读 email / projectId。后端还下发 account，但 api-key 类凭证的 account
++ * 1. Read email/projectId and WorkBuddy's explicit display label only. 后端还下发 account，但 api-key 类凭证的 account
+  *    就是 API key 本身（sdk/cliproxy/auth/types.go AccountInfo），一旦进入主行、
+  *    title 或搜索 haystack 就是密钥泄露；且 oauth 分支的 account 与 email 同源冗余。
+  * 2. 不从文件名正则抽 email。codex 以 '-' 分隔，而 '-' 在 local part 与域名里都合法，
+@@ -17,7 +17,16 @@
+ 
+ import type { AuthFileItem } from '@/types';
+ 
+-export type AuthFileIdentityKind = 'email' | 'projectId' | 'fileName';
++export type AuthFileIdentityKind = 'label' | 'email' | 'projectId' | 'fileName';
++
++/** WorkBuddy's host label comes from its stored nickname, not the account/key field. */
++export const workbuddyDisplayLabel = (file: AuthFileItem): string => {
++  const provider = readIdentityText(file.provider || file.type).toLowerCase();
++  if (provider !== 'workbuddy') return '';
++  return readIdentityText(file.label)
++    .replace(/ \[(?:Global|CN)\]$/, '')
++    .trim();
++};
+ 
+ export type AuthFileIdentity = {
+   /** 卡片主行。无任何身份线索时为空串——不伪造占位符。 */
+@@ -42,8 +51,8 @@ export const stripJsonExtension = (name: string): string => {
+ };
+ 
+ /**
+- * 身份回落链：email → projectId → 文件名（去 .json）。
+- * 刻意与 provider 无关：runtime-only 虚拟凭证（name === email === 频道 ID）
++ * WorkBuddy label → email → projectId → 文件名（去 .json）。
++ * Other providers retain their existing identity chain. Runtime-only 虚拟凭证（name === email === 频道 ID）
+  * 由副行去重守卫结构性处理，比按 provider 白名单更稳。
+  */
+ export const deriveAuthFileIdentity = (file: AuthFileItem): AuthFileIdentity => {
+@@ -52,8 +61,15 @@ export const deriveAuthFileIdentity = (file: AuthFileItem): AuthFileIdentity =>
+   const email = readIdentityText(file.email);
+   const projectId = readIdentityText(file.projectId);
+ 
+-  const kind: AuthFileIdentityKind = email ? 'email' : projectId ? 'projectId' : 'fileName';
+-  const primary = email || projectId || base;
++  const label = workbuddyDisplayLabel(file);
++  const kind: AuthFileIdentityKind = label
++    ? 'label'
++    : email
++      ? 'email'
++      : projectId
++        ? 'projectId'
++        : 'fileName';
++  const primary = label || email || projectId || base;
+ 
+   const secondary =
+     kind === 'fileName' || !base || base.toLowerCase() === primary.toLowerCase() ? null : base;
+diff --git a/src/features/authFiles/logic.ts b/src/features/authFiles/logic.ts
+index 0bebda3..ebf2def 100644
+--- a/src/features/authFiles/logic.ts
++++ b/src/features/authFiles/logic.ts
+@@ -11,7 +11,7 @@ import {
+   type AuthFileQuotaFilter,
+   type QuotaProviderType,
+ } from './constants';
+-import { deriveAuthFileIdentity } from './identity';
++import { deriveAuthFileIdentity, workbuddyDisplayLabel } from './identity';
+ import type { AuthFilesSortMode } from './uiState';
+ 
+ const escapeWildcardSearchSegment = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+@@ -48,7 +48,14 @@ export const matchesAuthFileSearch = (
+ ): boolean => {
+   if (!term) return true;
+   const needle = term.toLowerCase();
+-  return [file.name, file.type, file.provider, file.email, file.projectId].some((value) => {
++  return [
++    file.name,
++    file.type,
++    file.provider,
++    file.email,
++    file.projectId,
++    workbuddyDisplayLabel(file),
++  ].some((value) => {
+     const content = (value || '').toString();
+     return wildcard ? wildcard.test(content) : content.toLowerCase().includes(needle);
+   });
+diff --git a/tests/authFileIdentity.test.ts b/tests/authFileIdentity.test.ts
+index 2df4ef4..4a6c88f 100644
+--- a/tests/authFileIdentity.test.ts
++++ b/tests/authFileIdentity.test.ts
+@@ -35,6 +35,43 @@ describe('stripJsonExtension', () => {
+ });
+ 
+ describe('deriveAuthFileIdentity', () => {
++  test('WorkBuddy uses the imported nickname label while retaining physical file identity', () => {
++    expect(
++      deriveAuthFileIdentity(
++        authFile({
++          type: 'workbuddy',
++          name: 'workbuddy-test-uid.json',
++          label: 'Intl-new-import [Global]',
++          email: 'different@example.com',
++        })
++      )
++    ).toEqual({
++      primary: 'Intl-new-import',
++      kind: 'label',
++      secondary: 'workbuddy-test-uid',
++      fullName: 'workbuddy-test-uid.json',
++    });
++    expect(
++      deriveAuthFileIdentity(
++        authFile({
++          provider: 'workbuddy',
++          label: 'CN-example [CN]',
++        })
++      ).primary
++    ).toBe('CN-example');
++  });
++
++  test('WorkBuddy label does not read credential account values and handles missing labels', () => {
++    const file = authFile({ type: 'workbuddy', label: 123, account: 'sk-secret' });
++    expect(deriveAuthFileIdentity(file).primary).toBe('credential');
++    expect(JSON.stringify(deriveAuthFileIdentity(file))).not.toContain('sk-secret');
++  });
++
++  test('other providers retain email/project identity and do not surface arbitrary labels', () => {
++    const file = authFile({ label: 'sk-secret-label', email: 'user@example.com' });
++    expect(deriveAuthFileIdentity(file).primary).toBe('user@example.com');
++    expect(JSON.stringify(deriveAuthFileIdentity(file))).not.toContain('sk-secret');
++  });
+   test('leads with the account email and keeps the full name as the secondary row', () => {
+     expect(
+       deriveAuthFileIdentity(
+diff --git a/tests/authFilesListLogic.test.ts b/tests/authFilesListLogic.test.ts
+index 74f706a..c76fc98 100644
+--- a/tests/authFilesListLogic.test.ts
++++ b/tests/authFilesListLogic.test.ts
+@@ -50,6 +50,17 @@ describe('resolveAuthFileQuotaType', () => {
+ });
+ 
+ describe('matchesAuthFileSearch', () => {
++  test('searches WorkBuddy by displayed imported nickname without searching credential values', () => {
++    const file = authFile({
++      type: 'workbuddy',
++      label: 'Intl-new-import [Global]',
++      account: 'sk-secret',
++    });
++    expect(search(file, 'new-import')).toBe(true);
++    expect(search(file, 'Intl*import')).toBe(true);
++    expect(search(file, 'sk-secret')).toBe(false);
++    expect(search(authFile({ label: 'sk-secret' }), 'sk-secret')).toBe(false);
++  });
+   test('an empty term matches every file', () => {
+     expect(matchesAuthFileSearch(authFile(), '', null)).toBe(true);
+   });

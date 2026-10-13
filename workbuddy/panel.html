@@ -1774,8 +1774,9 @@ if(getKey()){
    {
      realms: {
        global: {
-         accounts: ["Intl-…", "…"],            // daftar akun realm ini (untuk fetch/test/save per-akun)
-         fetch_account: "Intl-…",              // akun yang dipakai fetch
+         accounts: ["<record-id>", "…"],       // stable request values, never display names
+         account_labels: {"<record-id>":"Intl-…"}, // nickname matching account cards
+         fetch_account: "<record-id>",         // akun yang dipakai fetch
          fetched_at: "RFC3339", upstream: 31, catalog: 9, free: 9,
          prefix: { enabled: false, value: "", def: "cb/" },
          disabled: ["gpt-6-astra"],            // union blacklist efektif (layering sudah di-resolve backend)
@@ -1894,7 +1895,7 @@ function mmRenderFetchStats(realm){
   let accts=(c.accounts||[]);
   const sel=g?"mm-facct-g":"mm-facct-c";
   let acctSel='<select id="'+sel+'" onchange="mmChangeFetchAcct(\''+realm+'\')">'
-    +accts.map(a=>'<option'+(a===c.fetch_account?' selected':'')+'>'+esc(a)+'</option>').join("")+'</select>';
+    +accts.map(a=>'<option value="'+esc(a)+'" title="'+esc(a)+'"'+(a===c.fetch_account?' selected':'')+'>'+esc((c.account_labels&&c.account_labels[a])||a)+'</option>').join("")+'</select>';
   const parts=[];
   parts.push(tr("上游拉取 ")+'<b>'+(c.upstream!=null?c.upstream:"?")+'</b> <code>'+(g?"/v2 ∪ /v3/config · UA WorkBuddy":"copilot.tencent.com console cli ∪ /v3/config")+'</code>');
   if(c.catalog) parts.push(tr("目录 ")+'<b>'+c.catalog+'</b>'+tr(" 个过期"));
