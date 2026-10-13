@@ -104,9 +104,11 @@ empty HTTP 200 streams, and transport errors stop the request without replay.
 Failover can incur a prompt-cache miss on the replacement account; cache sharing
 varies by model/backend.
 
-The dev branch limits chat execution to **one active request per account** across
+The dev branch limits chat execution to **two active requests per account** across
 models and duplicate host identities (UID + realm). Up to 16 callers may wait for
-30 seconds; overload stops locally without sending a paid request. The executor
+30 seconds; overload stops locally without sending a paid request. Two slots let
+one long-running response overlap a second session; one slot caused a 30-second
+local queue timeout behind a 51-second response in production. The executor
 rechecks quarantine after queueing, so a pool built before a 429 cannot keep
 sending requests to that rejected account. Separate CPA processes have separate
 limits; prod and dev must not use the same account concurrently.

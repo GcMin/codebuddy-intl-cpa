@@ -11,7 +11,11 @@ import (
 	"time"
 )
 
-const maxAccountChatInFlight = 1
+// Two independent sessions can overlap on the same account. One slot made a
+// 51s upstream response block a second session until its 30s local queue
+// timeout (observed 2026-10-14 02:11 WIB). Keep this small: a 429 from either
+// slot quarantines the account/model before queued requests enter upstream.
+const maxAccountChatInFlight = 2
 const maxAccountChatWaiters = 16
 const accountChatQueueTimeout = 30 * time.Second
 

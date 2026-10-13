@@ -181,6 +181,55 @@ func TestProbeRankingAliasesDisabledRealmAndCredit(t *testing.T) {
 	}
 }
 
+func TestSecondSessionRunsWhileFirstAccountChatIsBusy(t *testing.T) {
+	c := exhaustedCandidates(t)[0]
+	first, err := admitCandidateAttempt(context.Background(), c)
+	if err != nil || first == nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		second, e := admitCandidateAttempt(context.Background(), c)
+		if second != nil {
+			second()
+		}
+		done <- e
+	}()
+	select {
+	case e := <-done:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second independent session blocked on the first account chat")
+	}
+	// A third session waits for a slot and obeys cancellation.
+	second, err := admitCandidateAttempt(context.Background(), c)
+	if err != nil || second == nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	blocked := make(chan error, 1)
+	go func() {
+		release, e := admitCandidateAttempt(ctx, c)
+		if release != nil {
+			release()
+		}
+		blocked <- e
+	}()
+	select {
+	case e := <-blocked:
+		t.Fatalf("third request did not wait: %v", e)
+	case <-time.After(20 * time.Millisecond):
+	}
+	cancel()
+	if e := <-blocked; !errors.Is(e, context.Canceled) {
+		t.Fatalf("queued cancellation: %v", e)
+	}
+	second()
+	first()
+}
+
 func TestBurstSerializesAliasesAndRechecksCooldown(t *testing.T) {
 	cs := exhaustedCandidates(t)
 	a := cs[0]
@@ -215,7 +264,7 @@ func TestBurstSerializesAliasesAndRechecksCooldown(t *testing.T) {
 	}
 	close(start)
 	wg.Wait()
-	if peak.Load() != 1 || calls.Load() != 1 {
+	if peak.Load() > maxAccountChatInFlight || calls.Load() > maxAccountChatInFlight || calls.Load() < 1 {
 		t.Fatalf("burst bypassed admission or stale cooldown: peak=%d calls=%d", peak.Load(), calls.Load())
 	}
 	resetCandidateCooldown(&alias)
