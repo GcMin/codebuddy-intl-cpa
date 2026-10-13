@@ -505,8 +505,13 @@ type failoverAttemptFn func(cand *failoverCandidate) (attemptOutcome, int, strin
 // skipped (no auth mutation); ambiguous or request-wide failures stop the loop.
 func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
+	busy := false
 	for _, cand := range cands {
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
+		if errors.Is(admissionErr, errAccountBusy) {
+			busy = true
+			continue // try a free same-realm account, without local waiting
+		}
 		if admissionErr != nil {
 			return admissionFailureResult(res, admissionErr)
 		}
@@ -536,7 +541,7 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contex
 				Status: status, Body: body, Err: err}
 		}
 	}
-	return unavailableFailoverResult(res)
+	return unavailableFailoverResult(res, busy)
 }
 
 // classifyNonStream classifies a folded (non-stream) attempt result.
@@ -562,8 +567,13 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 // occurs, the loop stops immediately.
 func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
+	busy := false
 	for _, cand := range cands {
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
+		if errors.Is(admissionErr, errAccountBusy) {
+			busy = true
+			continue
+		}
 		if admissionErr != nil {
 			return admissionFailureResult(res, admissionErr)
 		}
@@ -607,7 +617,7 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 		return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 			Status: status, Body: err.Error(), Err: err}
 	}
-	return unavailableFailoverResult(res)
+	return unavailableFailoverResult(res, busy)
 }
 
 func admissionFailureResult(res failoverResult, err error) failoverResult {
@@ -622,10 +632,13 @@ func admissionFailureResult(res failoverResult, err error) failoverResult {
 	return failoverResult{Outcome: outcome, AuthID: res.AuthID, Tried: res.Tried, Status: status, Body: body, Err: err}
 }
 
-func unavailableFailoverResult(res failoverResult) failoverResult {
+func unavailableFailoverResult(res failoverResult, busy ...bool) failoverResult {
 	if res.Err == nil {
 		res.Outcome = outcomeRateLimited
 		res.Status, res.Body = 429, "all eligible workbuddy accounts are temporarily unavailable"
+		if len(busy) > 0 && busy[0] {
+			res.Body = "all eligible workbuddy accounts are busy; retry later"
+		}
 		res.Err = &upstreamStatusError{status: res.Status, body: res.Body}
 	}
 	return res

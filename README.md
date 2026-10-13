@@ -105,13 +105,14 @@ Failover can incur a prompt-cache miss on the replacement account; cache sharing
 varies by model/backend.
 
 The dev branch limits chat execution to **two active requests per account** across
-models and duplicate host identities (UID + realm). Up to 16 callers may wait for
-30 seconds; overload stops locally without sending a paid request. Two slots let
-one long-running response overlap a second session; one slot caused a 30-second
-local queue timeout behind a 51-second response in production. The executor
-rechecks quarantine after queueing, so a pool built before a 429 cannot keep
-sending requests to that rejected account. Separate CPA processes have separate
-limits; prod and dev must not use the same account concurrently.
+models and duplicate host identities (UID + realm). If both slots are full, the
+executor immediately tries another enabled account in the same realm. If every
+account is busy, it fails fast without sending a paid upstream request. There is
+**no local waiting queue**. It rechecks quarantine after reserving each slot, so
+a concurrent request cannot keep sending to an account just rejected with 429.
+Separate CPA processes have separate limits; prod and dev must not use the same
+account concurrently. Switching accounts may lose prompt cache on `gpt-6-sol`
+and `gpt-6.1-sol`; the account limit is not a cache-sharing guarantee.
 
 Soft 429/code 6004 quarantine is **account + upstream model**. Credit exhaustion
 remains account-wide. When all accounts for a model are cooling, a request may

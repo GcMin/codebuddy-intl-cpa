@@ -1,9 +1,12 @@
-// attempt_admission.go bounds chat concurrency without replaying accepted
-// requests. Limits are process-local; separate CPA instances do not share slots.
+// attempt_admission.go bounds chat concurrency per account without a local
+// waiting queue. A busy candidate is skipped so another enabled account in
+// the same realm can answer immediately. The host may still enforce its own
+// request scheduling before the plugin executor is called.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,19 +14,11 @@ import (
 	"time"
 )
 
-// Two independent sessions can overlap on the same account. One slot made a
-// 51s upstream response block a second session until its 30s local queue
-// timeout (observed 2026-10-14 02:11 WIB). Keep this small: a 429 from either
-// slot quarantines the account/model before queued requests enter upstream.
 const maxAccountChatInFlight = 2
-const maxAccountChatWaiters = 16
-const accountChatQueueTimeout = 30 * time.Second
 
-type accountChatGate struct {
-	slots   chan struct{}
-	waiters int
-	refs    int // waiting + admitted; idle accounts leave no retained gate
-}
+var errAccountBusy = errors.New("account chat capacity reached")
+
+type accountChatGate struct{ inFlight int }
 
 var chatGateMu sync.Mutex
 var chatGates = map[string]*accountChatGate{}
@@ -45,7 +40,10 @@ func modelCooldownKey(id, model string) string { return "model:" + id + ":" + mo
 func candidateCooldownState(c *failoverCandidate) authCooldown {
 	cooldownMu.Lock()
 	defer cooldownMu.Unlock()
-	now := time.Now()
+	return candidateCooldownStateLocked(c, time.Now())
+}
+
+func candidateCooldownStateLocked(c *failoverCandidate, now time.Time) authCooldown {
 	var out authCooldown
 	for _, id := range candidateCooldownIDs(c) {
 		keys := []string{id}
@@ -100,12 +98,16 @@ func accountGateKey(c *failoverCandidate) string {
 	return c.AuthID
 }
 
-// Returns (nil,nil) for quarantined candidates, (nil,error) for local overload,
-// and a release callback only after a slot and any probe have been admitted.
-// Cooldown is rechecked AFTER queueing so stale pools cannot fan out a burst.
+// Acquires only a free slot. The caller can immediately try another account
+// when errAccountBusy is returned. On recheck, a newly quarantined account is
+// skipped without an upstream call. Release is idempotent and removes idle
+// gates. The slot serializes probe reservation with candidate admission.
 func admitCandidateAttempt(ctx context.Context, c *failoverCandidate) (func(), error) {
 	if c == nil || c.Auth == nil || c.AuthID == "" {
 		return nil, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	cd := candidateCooldownState(c)
 	if !cd.NextRetryAt.IsZero() && (!c.RecoveryProbe || cd.Reason != "429" || !candidateProbeReady(c)) {
@@ -115,62 +117,43 @@ func admitCandidateAttempt(ctx context.Context, c *failoverCandidate) (func(), e
 	chatGateMu.Lock()
 	gate := chatGates[key]
 	if gate == nil {
-		gate = &accountChatGate{slots: make(chan struct{}, maxAccountChatInFlight)}
+		gate = &accountChatGate{}
 		chatGates[key] = gate
 	}
-	if gate.waiters >= maxAccountChatWaiters {
+	if gate.inFlight >= maxAccountChatInFlight {
 		chatGateMu.Unlock()
-		return nil, &upstreamStatusError{status: 429, body: "local account chat queue is full; retry later"}
+		return nil, errAccountBusy
 	}
-	gate.waiters++
-	gate.refs++
+	gate.inFlight++
 	chatGateMu.Unlock()
-	waiting := true
-	dropRef := func() {
-		chatGateMu.Lock()
-		gate.refs--
-		if gate.refs == 0 && gate.waiters == 0 && chatGates[key] == gate {
-			delete(chatGates, key)
-		}
-		chatGateMu.Unlock()
-	}
-	defer func() {
-		if waiting {
-			chatGateMu.Lock()
-			gate.waiters--
-			chatGateMu.Unlock()
-			dropRef()
-		}
-	}()
-	timer := time.NewTimer(accountChatQueueTimeout)
-	defer timer.Stop()
-	select {
-	case gate.slots <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-timer.C:
-		return nil, &upstreamStatusError{status: 429, body: "local account chat queue timed out; retry later"}
-	}
-	chatGateMu.Lock()
-	gate.waiters--
-	chatGateMu.Unlock()
-	waiting = false
 	var once sync.Once
-	release := func() { once.Do(func() { <-gate.slots; dropRef() }) }
+	release := func() {
+		once.Do(func() {
+			chatGateMu.Lock()
+			gate.inFlight--
+			if gate.inFlight == 0 && chatGates[key] == gate {
+				delete(chatGates, key)
+			}
+			chatGateMu.Unlock()
+		})
+	}
 	if err := ctx.Err(); err != nil {
 		release()
 		return nil, err
 	}
-	cd = candidateCooldownState(c)
+	// Recheck and reserve under the SAME lock. Two in-flight slots must not
+	// both pass a ready-probe check before either reserves the next backoff.
+	cooldownMu.Lock()
+	now := time.Now()
+	cd = candidateCooldownStateLocked(c, now)
 	if !cd.NextRetryAt.IsZero() {
-		if !c.RecoveryProbe || cd.Reason != "429" || !candidateProbeReady(c) {
+		if !c.RecoveryProbe || cd.Reason != "429" || cd.ProbeAt.After(now) {
+			cooldownMu.Unlock()
 			release()
 			return nil, nil
 		}
-		// Slot serializes every alias/model for this account. Reserving the next
-		// probe before I/O prevents concurrent callers from probing in succession.
-		cooldownMu.Lock()
-		now := time.Now()
+		// Reserve the next probe before I/O. A second slot sees this
+		// reservation and skips the attempt.
 		for _, id := range candidateCooldownIDs(c) {
 			keys := []string{id}
 			if c.RateModel != "" {
@@ -186,6 +169,8 @@ func admitCandidateAttempt(ctx context.Context, c *failoverCandidate) (func(), e
 		}
 		cooldownMu.Unlock()
 		fmt.Fprintf(os.Stderr, "[workbuddy] failover: probing rate-limited auth=%q model=%q\n", redactSecrets(c.AuthID), redactSecrets(c.RateModel))
+		return release, nil
 	}
+	cooldownMu.Unlock()
 	return release, nil
 }

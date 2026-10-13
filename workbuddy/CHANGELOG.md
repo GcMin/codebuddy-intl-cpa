@@ -75,12 +75,11 @@
 ### Rate-limit admission and recovery
 
 - Bound chat attempts to two per account UID/realm across models and host
-  aliases. Limit waiting callers to 16 with a 30-second timeout. One slot
-  caused a local queue timeout when another chat took 51 seconds; two allow
-  independent sessions to overlap. Local overload sends no upstream request
-  and does not quarantine or mutate account files.
-- Recheck cooldown after queueing and publish rejected-attempt quarantine before
-  releasing the slot, so stale concurrent pools cannot repeat the same burst.
+  aliases. Do not queue locally: when an account is busy, try another enabled
+  same-realm account; if all are busy, fail fast without upstream I/O. A 30s
+  local queue timeout behind a 51s request motivated removing the queue.
+- Recheck cooldown after slot admission and publish rejected-attempt quarantine
+  before releasing the slot, so stale concurrent pools cannot repeat a burst.
 - Scope soft 429/code 6004 cooldown to account + upstream model (10-minute cap);
   preserve account-wide credit-exhaustion reset/30-minute quarantine.
 - When no account is ready, allow one soft-rate-limit recovery probe after a

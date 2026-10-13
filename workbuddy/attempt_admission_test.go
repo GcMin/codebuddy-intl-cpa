@@ -203,31 +203,134 @@ func TestSecondSessionRunsWhileFirstAccountChatIsBusy(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("second independent session blocked on the first account chat")
 	}
-	// A third session waits for a slot and obeys cancellation.
+	// A third session is rejected immediately, not queued behind a long
+	// response. The failover loop can then try a free account.
 	second, err := admitCandidateAttempt(context.Background(), c)
 	if err != nil || second == nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	blocked := make(chan error, 1)
-	go func() {
-		release, e := admitCandidateAttempt(ctx, c)
-		if release != nil {
-			release()
-		}
-		blocked <- e
-	}()
-	select {
-	case e := <-blocked:
-		t.Fatalf("third request did not wait: %v", e)
-	case <-time.After(20 * time.Millisecond):
-	}
-	cancel()
-	if e := <-blocked; !errors.Is(e, context.Canceled) {
-		t.Fatalf("queued cancellation: %v", e)
+	started := time.Now()
+	if r, e := admitCandidateAttempt(context.Background(), c); r != nil || !errors.Is(e, errAccountBusy) || time.Since(started) > time.Second {
+		t.Fatalf("third request queued: acquired=%v err=%v", r != nil, e)
 	}
 	second()
 	first()
+}
+
+func TestBusyAccountFailsOverWithoutWaiting(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(map[bool]string{false: "nonstream", true: "stream"}[stream], func(t *testing.T) {
+			cands := exhaustedCandidates(t)
+			release1, e1 := admitCandidateAttempt(context.Background(), cands[0])
+			release2, e2 := admitCandidateAttempt(context.Background(), cands[0])
+			if e1 != nil || e2 != nil || release1 == nil || release2 == nil {
+				t.Fatal(e1, e2)
+			}
+			defer release1()
+			defer release2()
+			attempts := 0
+			started := time.Now()
+			var fin failoverResult
+			if stream {
+				fin = runStreamFailover(cands, func(c *failoverCandidate) (bool, int, error) {
+					attempts++
+					if c != cands[1] {
+						t.Fatal("busy account attempted")
+					}
+					return false, 200, nil
+				})
+			} else {
+				fin = runFailover(cands, func(c *failoverCandidate) (attemptOutcome, int, string, error) {
+					attempts++
+					if c != cands[1] {
+						t.Fatal("busy account attempted")
+					}
+					return outcomeSuccess, 200, "", nil
+				})
+			}
+			if fin.Outcome != outcomeSuccess || fin.AuthID != cands[1].AuthID || attempts != 1 || time.Since(started) > time.Second {
+				t.Fatalf("no immediate peer failover: %+v calls=%d", fin, attempts)
+			}
+			release3, e3 := admitCandidateAttempt(context.Background(), cands[1])
+			release4, e4 := admitCandidateAttempt(context.Background(), cands[1])
+			if e3 != nil || e4 != nil || release3 == nil || release4 == nil {
+				t.Fatal(e3, e4)
+			}
+			defer release3()
+			defer release4()
+			attempts = 0
+			if stream {
+				fin = runStreamFailover(cands, func(*failoverCandidate) (bool, int, error) { attempts++; return false, 200, nil })
+			} else {
+				fin = runFailover(cands, func(*failoverCandidate) (attemptOutcome, int, string, error) {
+					attempts++
+					return outcomeSuccess, 200, "", nil
+				})
+			}
+			if fin.Status != 429 || !strings.Contains(fin.Body, "busy") || attempts != 0 || len(fin.Tried) != 0 {
+				t.Fatalf("all busy must fail fast without upstream: %+v calls=%d", fin, attempts)
+			}
+		})
+	}
+}
+
+func TestBusyFallbackRealExecutorPaths(t *testing.T) {
+	for _, mode := range []string{"nonstream", "syncstream", "asyncstream"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+			cs := exhaustedCandidates(t)
+			for _, c := range cs {
+				c.Auth.Auth.AccessToken = "fake-test-token"
+			}
+			stubAuthSources(t, []pluginapi.HostAuthFileEntry{testAuthEntry("exhaust-a", "record-a", false), testAuthEntry("exhaust-b", "record-b", false)}, map[string]*storedAuth{"exhaust-a": cs[0].Auth, "exhaust-b": cs[1].Auth})
+			one, e1 := admitCandidateAttempt(context.Background(), cs[0])
+			two, e2 := admitCandidateAttempt(context.Background(), cs[0])
+			if e1 != nil || e2 != nil || one == nil || two == nil {
+				t.Fatal(e1, e2)
+			}
+			defer one()
+			defer two()
+			oldStore := usageStore
+			usageStore = &requestUsageStore{perDay: map[string]map[string]*dayAgg{}}
+			t.Cleanup(func() { usageStore = oldStore })
+			oldEmit := streamEmitSource
+			streamEmitSource = func(string, []byte) error { return nil }
+			t.Cleanup(func() { streamEmitSource = oldEmit })
+			client := sharedHTTPClient()
+			oldTransport := client.Transport
+			t.Cleanup(func() { client.Transport = oldTransport })
+			calls := 0
+			client.Transport = exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.Header.Get("X-User-Id") != "uid-b" {
+					t.Fatal("upstream attempted busy account")
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":1,\"credit\":0.01}}\n\ndata: [DONE]\n\n"))}, nil
+			})
+			req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: "cb/gpt-6.1-sol", AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cs[0].Auth), Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
+			raw, _ := json.Marshal(req)
+			var err error
+			switch mode {
+			case "nonstream":
+				_, err = handleExecExecute(raw)
+			case "syncstream":
+				_, err = handleExecStream(raw)
+			default:
+				pool, storage, e := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+				if e != nil {
+					t.Fatal(e)
+				}
+				pumpWithFailover(t.Context(), nil, req, prepareUpstreamBody(req.Payload, nil, cs[0].Auth, "gpt-6.1-sol"), "gpt-6.1-sol", "uid-a", time.Now(), false, pool.ordered(storage))
+			}
+			if err != nil || calls != 1 {
+				t.Fatalf("executor fallback: calls=%d err=%v", calls, err)
+			}
+			records := usageStore.ringSnapshot()
+			if len(records) != 1 || records[0].AuthID != "exhaust-b" || records[0].Failed || len(records[0].CacheTrace.Attempts) != 1 {
+				t.Fatalf("wrong accounting/attempts: %+v", records)
+			}
+		})
+	}
 }
 
 func TestBurstSerializesAliasesAndRechecksCooldown(t *testing.T) {
@@ -270,7 +373,7 @@ func TestBurstSerializesAliasesAndRechecksCooldown(t *testing.T) {
 	resetCandidateCooldown(&alias)
 }
 
-func TestConcurrentProbeSingleFlightBackoffAndQueueCancellation(t *testing.T) {
+func TestConcurrentProbeSingleFlightAndNoQueue(t *testing.T) {
 	c := exhaustedCandidates(t)[0]
 	markCandidateUnavailable(c, outcomeRateLimited, "")
 	readyProbe(t, c)
@@ -306,18 +409,15 @@ func TestConcurrentProbeSingleFlightBackoffAndQueueCancellation(t *testing.T) {
 	if r, e := admitCandidateAttempt(ctx, c); r != nil || !errors.Is(e, context.Canceled) {
 		t.Fatalf("cancel ignored: acquired=%v err=%v", r != nil, e)
 	}
-	// Full queue rejects immediately, not a destructive auth cooldown.
-	chatGateMu.Lock()
-	g := chatGates[accountGateKey(c)]
-	g.waiters = maxAccountChatWaiters
-	chatGateMu.Unlock()
-	r, e := admitCandidateAttempt(context.Background(), c)
-	chatGateMu.Lock()
-	g.waiters = 0
-	chatGateMu.Unlock()
-	if r != nil || e == nil || candidateOnCooldown(c) {
-		t.Fatalf("bad overload admission acquired=%v err=%v", r != nil, e)
+	second, e := admitCandidateAttempt(context.Background(), c)
+	if second == nil || e != nil {
+		t.Fatalf("second slot missing: %v", e)
 	}
+	r, e := admitCandidateAttempt(context.Background(), c)
+	if r != nil || !errors.Is(e, errAccountBusy) || candidateOnCooldown(c) {
+		t.Fatalf("busy admission mutated quarantine: acquired=%v err=%v", r != nil, e)
+	}
+	second()
 	release()
 	release() // idempotent, no deadlock
 	chatGateMu.Lock()
