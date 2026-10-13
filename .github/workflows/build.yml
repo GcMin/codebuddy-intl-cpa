@@ -42,6 +42,12 @@ jobs:
       - name: Validate registry.json
         working-directory: .
         run: python3 scripts/validate-registry.py registry.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Panel update contract regression tests
+        working-directory: .
+        run: node --test scripts/test-panel-update.cjs
       - name: Test
         run: go test ./...
       - name: Vet

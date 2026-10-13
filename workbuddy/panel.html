@@ -44,7 +44,7 @@
   color-scheme:dark
 }
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
-.wrap{max-width:1100px;margin:0 auto;padding:24px 16px}
+.wrap{max-width:1100px;margin:0 auto;padding:76px 16px 24px}
 .panel-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}.language-control{display:flex;gap:8px;align-items:center;color:var(--mut);font-size:13px}.language-control select{background:var(--input-bg);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font:inherit}
 h1{font-size:20px;margin:0 0 4px}.sub{color:var(--mut);font-size:13px;margin-bottom:20px}
 .bar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
@@ -241,10 +241,11 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .mm-save-all:hover{filter:brightness(1.08)}
 /* ===== Update checker — fixed pojok kiri atas ===== */
 .uwidget{position:fixed;top:14px;left:14px;z-index:9500}
-.ubtn{position:relative;white-space:nowrap}
+.ubtn{position:relative;max-width:calc(100vw - 28px);text-align:left;background:var(--surface-muted);color:var(--fg);border:1px solid var(--border);font-weight:600}
+.ubtn.has-update{border-color:var(--warn-border);background:var(--warn-soft);color:var(--warn)}
 .udot{position:absolute;top:-8px;right:-8px;min-width:20px;height:20px;background:var(--err);color:#fff;font-size:11px;font-weight:800;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 5px;border:2px solid var(--bg);animation:upulse 1.8s infinite}
 @keyframes upulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
-.upop{position:absolute;top:44px;left:0;width:340px;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--modal-shadow);display:none;z-index:60;overflow:hidden}
+.upop{position:absolute;top:44px;left:0;width:min(360px,calc(100vw - 28px));background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--modal-shadow);display:none;z-index:60;overflow:hidden}
 .upop.open{display:block}
 .uhead{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .uhead .t{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
@@ -252,6 +253,10 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .ubody{padding:14px 16px}
 .upbox{background:var(--warn-soft);border:1px solid var(--warn-border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
 .upbox .t{color:var(--warn);font-weight:600;font-size:13.5px}
+.upbox.ok{background:var(--ok-soft);border-color:var(--ok-border)}
+.upbox.ok .t{color:var(--ok)}
+.upbox.unknown{background:var(--mut-soft);border-color:var(--mut-border)}
+.upbox.unknown .t{color:var(--fg)}
 .upbox .n{color:var(--mut);font-size:12.5px;margin-top:4px}
 .upbox .hl{color:var(--warn);font-weight:600}
 .btn-update{width:100%;background:var(--ok);border:none;color:#fff;border-radius:8px;padding:9px;font-size:13.5px;font-weight:600;cursor:pointer;margin-bottom:10px;font-family:inherit}
@@ -311,23 +316,23 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 </script>
 </head>
 <body>
-<!-- Update checker: fixed kiri atas, muncul hanya jika registry.version > build.version (dirender oleh JS dari /update/check) -->
-<div class="uwidget" id="uwidget" style="display:none">
-  <button type="button" class="ubtn" id="ubtn"><span id="ulabel">⬇</span><span class="udot" id="udot">1</span></button>
+<!-- Current / upstream release always visible; only the notification dot is conditional. -->
+<div class="uwidget" id="uwidget">
+  <button type="button" class="ubtn" id="ubtn" aria-expanded="false" aria-controls="upop"><span id="ulabel" data-i18n="当前 / 上游版本 — 正在检查…">当前 / 上游版本 — 正在检查…</span><span class="udot" id="udot" style="display:none">1</span></button>
   <div class="upop" id="upop">
     <div class="uhead">
       <div><div class="t" data-i18n="当前版本">当前版本</div><div class="cur" id="ucur">—</div></div>
-      <button type="button" class="sec" style="padding:4px 8px;font-size:12px" id="urecheck">↻</button>
+      <button type="button" class="sec" style="padding:4px 8px;font-size:12px" id="urecheck" data-i18n="↻ 立即检查">↻ 立即检查</button>
     </div>
     <div class="ubody">
-      <div class="upbox">
-        <div class="t" data-i18n="🡇 有新版本可用！">🡇 有新版本可用！</div>
-        <div class="n"><span data-i18n="最新版">最新版</span>: <span class="hl" id="ulatest">—</span> · <span id="ureltime"></span></div>
+      <div class="upbox unknown" id="ustatusbox">
+        <div class="t" id="ustatus" data-i18n="正在检查…">正在检查…</div>
+        <div class="n"><span data-i18n="上游发布版">上游发布版</span>: <span class="hl" id="ulatest">—</span></div>
       </div>
       <button type="button" class="btn-update" id="ugithub" data-i18n="⬇ 通过 GitHub 更新">⬇ 通过 GitHub 更新</button>
-      <div class="unotes"><b id="uwn">What's new:</b><ul id="uchangelog"></ul></div>
+      <div class="unotes" id="unotes" style="display:none"><b id="uwn" data-i18n="发布说明">发布说明</b><ul id="uchangelog"></ul></div>
       <div class="vrow"><span class="k" data-i18n="发布说明">发布说明</span><a href="#" id="urelease">View on GitHub ↗</a></div>
-      <div class="vrow"><span class="k" data-i18n="校验和">校验和</span><span id="uchk" style="font-family:monospace;font-size:11px">—</span></div>
+      <div class="vrow"><span class="k" data-i18n="更新来源">更新来源</span><span>GitHub Releases</span></div>
       <div class="checkline"><span id="ulastcheck"></span><a href="#" id="uskip" data-i18n="跳过此版本">跳过此版本</a></div>
     </div>
   </div>
@@ -865,6 +870,18 @@ const PANEL_EN = {
   "拥有此模型的所有账号都已 EXHAUSTED — 在账号恢复前路由会失败。": "All accounts owning this model are EXHAUSTED — routing fails until an account recovers.",
   "只有部分账号拥有这个 entitlement。": "Only some accounts carry this entitlement.",
   "当前版本": "Current version",
+  "当前 / 上游版本 — 正在检查…": "Current / Upstream — checking…",
+  "当前": "Current",
+  "上游": "Upstream",
+  "上游发布版": "Upstream release",
+  "更新来源": "Update source",
+  "↻ 立即检查": "↻ Check now",
+  "正在检查…": "Checking…",
+  "尚未检查": "Not checked yet",
+  "检查失败 — 上游版本尚未确认": "Check unavailable — upstream version not confirmed",
+  "本地 / 开发版本领先于上游发布版": "Local / dev build ahead of the upstream release",
+  "需要管理密钥才能检查更新": "Management key required to check updates",
+  "（已跳过通知）": " (notification skipped)",
   "🡇 有新版本可用！": "🡇 A new version is available!",
   "最新版": "Latest",
   "⬇ 通过 GitHub 更新": "⬇ Update via GitHub",
@@ -975,6 +992,7 @@ function saveKey(){
   sessionStorage.setItem(SS_KEY,v);
   document.getElementById("authBox").style.display="none";
   load(false);
+  mmCheckUpdate(false);
 }
 function showAuth(){document.getElementById("authBox").style.display="block";const i=document.getElementById("keyInput");i&&i.focus()}
 function authHeaders(k){return k?{"Authorization":"Bearer "+k}:{}}
@@ -1764,13 +1782,13 @@ if(getKey()){
        },
        cn: { … sama, prefix.def "cn/", cn_disabled_models dst di-handle backend }
      },
-     version: { current: "0.9.6", registry: { version, released_at, notes:[…], checksum, url } }
+     version: { current: "0.9.7" } // release status comes separately from /update/check
    }
    POST /models/config  body: { realm, scope:"all", auth:"<fetch account>", state:{ disabled:[…], custom:[…],
      prefix_enabled, prefix_value, fallback_enabled, fallback_model, retry_fallback_enabled, retry_fallback_model } }
    POST /models/refresh body: { realm, account }   → invalidate cache + fan-out fetch upstream (gratis)
    POST /models/test    body: { realm, account, model } → { ok, status, credit, error }
-   GET  /update/check   → { current, latest:{version,released_at,notes,checksum,url}, checked_at, last_check }
+   GET  /update/check   → { current, latest:"0.9.7", available, checkedAt, changelog?, seen, failed? }
    Endpoint belum ada → UI tetap render (error state + toast), tanpa data hardcode. */
 
 const MM_API = API; // sama base endpoint plugin
@@ -2279,56 +2297,73 @@ function mmCmpVer(a,b){
   return 0;
 }
 function mmHandleUpdate(v){
-  MM.update=v||null;
-  const w=document.getElementById("uwidget");
+  // /models/config carries current only: don't erase a completed release check.
+  MM.update=Object.assign({},MM.update||{},v||{});
+  const d=MM.update, w=document.getElementById("uwidget");
   if(!w)return;
-  const cur=v&&v.current, reg=v&&v.registry;
-  const latest=reg&&reg.version;
-  // Muncul HANYA jika registryVersion > buildVersion (dan tidak di-skip user)
-  if(!latest||!cur||mmCmpVer(latest,cur)<=0||(latest===MM.skipVersion)){w.style.display="none";return;}
+  const cur=d.current, latest=typeof d.latest==="string"?d.latest:"";
+  const skipped=!!d.seen||latest===MM.skipVersion;
+  const available=!!d.available&&!!latest&&!d.failed;
+  const notify=available&&!skipped;
+  const ver=s=>s?("v"+String(s).replace(/^v/,"")):"—";
   w.style.display="block";
-  document.getElementById("ucur").textContent="v"+cur;
-  document.getElementById("ulatest").textContent="v"+latest;
-  document.getElementById("ulabel").textContent="⬇ v"+latest+tr(" 可用");
-  document.getElementById("ureltime").textContent=reg.released_at?esc(fmtAgo(reg.released_at)):"";
-  const ul=document.getElementById("uchangelog");
-  if(ul)ul.innerHTML=(reg.notes||[]).map(n=>"<li>"+esc(n)+"</li>").join("")||"";
-  document.getElementById("uchk").textContent=reg.checksum?("sha256:"+reg.checksum):"—";
+  document.getElementById("ucur").textContent=ver(cur);
+  document.getElementById("ulatest").textContent=ver(latest);
+  document.getElementById("ulabel").textContent=tr("当前")+" "+ver(cur)+" · "+tr("上游")+" "+ver(latest);
+  document.getElementById("udot").style.display=notify?"flex":"none";
+  document.getElementById("ubtn").classList.toggle("has-update",notify);
+  const box=document.getElementById("ustatusbox");
+  box.classList.toggle("ok",!!latest&&!available&&!d.failed);
+  box.classList.toggle("unknown",!latest||!!d.failed);
+  let status;
+  if(d.failed)status=tr("检查失败 — 上游版本尚未确认");
+  else if(!latest)status=tr("尚未检查");
+  else if(available)status=tr("🡇 有新版本可用！")+(skipped?tr("（已跳过通知）"):"");
+  else if(mmCmpVer(cur,latest)>0)status=tr("本地 / 开发版本领先于上游发布版");
+  else status=tr("已是最新版本");
+  document.getElementById("ustatus").textContent=status;
+  const notes=d.changelog?[d.changelog]:[];
+  document.getElementById("uchangelog").innerHTML=notes.map(n=>"<li>"+esc(n)+"</li>").join("");
+  document.getElementById("unotes").style.display=notes.length?"block":"none";
+  const url="https://github.com/zidanefaqih/codebuddy-intl-cpa/releases/"+(latest?("tag/"+encodeURIComponent(ver(latest))):"latest");
   const gh=document.getElementById("ugithub");
-  if(gh)gh.onclick=()=>{window.open(reg.url||"https://github.com/","_blank","noopener");};
-  const rel=document.getElementById("urelease");
-  if(rel)rel.onclick=(e)=>{e.preventDefault();window.open(reg.url||"https://github.com/","_blank","noopener");};
-  const lc=document.getElementById("ulastcheck");
-  if(lc)lc.textContent=tr("上次检查：")+(v.checked_at?esc(fmtAgo(v.checked_at)):"—")+tr("（每 6 小时自动）");
+  gh.style.display=available?"block":"none";
+  gh.onclick=()=>window.open(url,"_blank","noopener");
+  document.getElementById("urelease").onclick=e=>{e.preventDefault();window.open(url,"_blank","noopener");};
+  document.getElementById("uskip").style.display=available&&!skipped?"inline":"none";
+  document.getElementById("ulastcheck").textContent=tr("上次检查：")+(d.checkedAt?fmtAgo(d.checkedAt):"—")+tr("（每 6 小时自动）");
 }
 async function mmCheckUpdate(manual){
+  // Never probe management without credentials (CPA bans after 5 failures).
+  if(!getKey()){
+    if(manual)mmToast(tr("需要管理密钥才能检查更新"),"warn");
+    return;
+  }
   try{
-    const d=await api("/update/check");
-    if(d&&d.error)return;
-    d.current=d.current||(MM.update&&MM.update.current);
+    const d=await api("/update/check"+(manual?"?refresh=1":""));
+    if(!d||d.error)throw new Error("update check unavailable");
     mmHandleUpdate(d);
-    if(manual){
-      const w=document.getElementById("uwidget");
-      if(w&&w.style.display==="none")mmToast(tr("已是最新版本"));
-    }
-  }catch(e){ /* silent fail */ }
+  }catch(e){
+    // Keep the installed/last-known version visible, without claiming up-to-date.
+    mmHandleUpdate({failed:true});
+  }
 }
 // Skip version: sembunyikan badge sampai versi berikutnya.
 document.getElementById("uskip").addEventListener("click",e=>{
   e.preventDefault();
-  const v=MM.update&&MM.update.registry&&MM.update.registry.version;
+  const v=MM.update&&MM.update.latest;
   if(v){
     MM.skipVersion=v;
     try{localStorage.setItem("workbuddy-update-skip",v)}catch(_){}
-    document.getElementById("uwidget").style.display="none";
+    mmHandleUpdate(MM.update);
     mmToast(tr("已跳过 v")+v+tr(" — 通知会在下个版本回来"));
   }
 });
-document.getElementById("ubtn").addEventListener("click",e=>{e.stopPropagation();document.getElementById("upop").classList.toggle("open");});
+document.getElementById("ubtn").addEventListener("click",e=>{e.stopPropagation();const open=document.getElementById("upop").classList.toggle("open");e.currentTarget.setAttribute("aria-expanded",String(open));});
 document.getElementById("urecheck").addEventListener("click",async e=>{
   e.stopPropagation();const b=e.currentTarget;b.textContent="…";
   await mmCheckUpdate(true);
-  b.textContent="↻";
+  b.textContent=tr("↻ 立即检查");
 });
 document.addEventListener("click",e=>{ if(!e.target.closest("#upop")&&!e.target.closest("#ubtn"))document.getElementById("upop").classList.remove("open"); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){mmClose("global");mmClose("cn");document.getElementById("upop").classList.remove("open");} });
@@ -2342,11 +2377,8 @@ window.addEventListener("load",()=>{
   const old=applyPanelLanguage;
   applyPanelLanguage=function(render){
     old(render);
-    if(MM.loaded){
-      mmRenderAll();
-      const w=document.getElementById("uwidget");
-      if(w&&w.style.display!=="none"&&MM.update)mmHandleUpdate(MM.update);
-    }
+    if(MM.loaded)mmRenderAll();
+    if(MM.update)mmHandleUpdate(MM.update);
   };
 })();
 </script>
