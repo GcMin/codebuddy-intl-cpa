@@ -248,9 +248,17 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 		file pluginapi.HostAuthFileEntry
 		cand *failoverCandidate
 	}
-	var candidates []eligible
+	routedName := ""
+	if routedAuthID != "" {
+		routedName = "workbuddy-" + routedAuthID + ".json"
+	}
+	matchesRouted := func(f pluginapi.HostAuthFileEntry) bool {
+		return routedAuthID != "" && (f.AuthIndex == routedAuthID || f.ID == routedAuthID ||
+			f.Name == routedAuthID || listEntryMatchesUID(f, routedAuthID, routedName))
+	}
+	var candidates, cooling []eligible
 	for _, f := range files {
-		if listAuthEntryDisabled(f) || f.AuthIndex == "" || isAuthOnCooldown(f.AuthIndex) {
+		if listAuthEntryDisabled(f) || f.AuthIndex == "" {
 			continue
 		}
 		sa, getErr := authGetSource(f.AuthIndex)
@@ -258,24 +266,48 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 			continue
 		}
 		cand := &failoverCandidate{AuthID: f.AuthIndex, RecordID: f.ID, Aliases: []string{f.Name}, Auth: sa}
-		if candidateOnCooldown(cand) {
+		if isAuthOnCooldown(f.AuthIndex) || candidateOnCooldown(cand) {
+			cooling = append(cooling, eligible{file: f, cand: cand})
 			continue
 		}
 		candidates = append(candidates, eligible{file: f, cand: cand})
 	}
 	if len(candidates) == 0 {
-		return nil, nil, fmt.Errorf("no enabled %s CodeBuddy account is available for model %q", realmLabel(realm), model)
+		// Every account in this realm is inside a rate-limit cooldown. Failing
+		// here turns a burst of upstream 429s into a realm-wide outage for the
+		// whole cooldown window, which the client sees as a broken provider
+		// (2026-10-13: every cb/* request answered 500 "no enabled Global
+		// CodeBuddy account is available" for ~30 minutes). Retry the routed
+		// account, or whichever recovers first, and let the upstream answer: a
+		// fresh 429 is retryable and never bills a rejected call.
+		pick := (*failoverCandidate)(nil)
+		for _, c := range cooling { // the account the host routed to comes first
+			if matchesRouted(c.file) {
+				pick = c.cand
+				break
+			}
+		}
+		for _, c := range cooling { // otherwise whichever recovers first
+			if pick == nil || authCooldownUntil(c.cand.AuthID).Before(authCooldownUntil(pick.AuthID)) {
+				pick = c.cand
+			}
+		}
+		if pick == nil {
+			return nil, nil, fmt.Errorf("no enabled %s CodeBuddy account is available for model %q", realmLabel(realm), model)
+		}
+		fmt.Fprintf(os.Stderr, "[workbuddy] failover: every %s account is cooling down; retrying %q\n", realmLabel(realm), redactSecrets(pick.AuthID))
+		storage, err := json.Marshal(pick.Auth)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot prepare %s account: %w", realmLabel(realm), err)
+		}
+		return &failoverPool{Primary: pick}, storage, nil
 	}
 
 	selected := 0
 	activeID := getActiveAuthID()
-	routedName := ""
-	if routedAuthID != "" {
-		routedName = "workbuddy-" + routedAuthID + ".json"
-	}
 	for i, c := range candidates {
 		f := c.file
-		if routedAuthID != "" && (f.AuthIndex == routedAuthID || f.ID == routedAuthID || f.Name == routedAuthID || listEntryMatchesUID(f, routedAuthID, routedName)) {
+		if matchesRouted(f) {
 			selected = i
 			break
 		}
@@ -524,6 +556,13 @@ func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body
 	resetAt := parseRateLimitResetAt(body)
 	if resetAt.IsZero() || !resetAt.After(time.Now()) {
 		resetAt = time.Now().Add(defaultCooldownDuration)
+	}
+	if reason == "429" {
+		// Soft rate limits recover; never let a burst freeze the whole realm
+		// for the full 30-minute window.
+		if capAt := time.Now().Add(maxRateLimitCooldown); resetAt.After(capAt) {
+			resetAt = capAt
+		}
 	}
 	for _, key := range candidateCooldownIDs(c) {
 		markAuthCooldownReason(key, resetAt, reason)

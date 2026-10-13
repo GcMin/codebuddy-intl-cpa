@@ -169,3 +169,53 @@ func TestEmptyPoolReturnsUsableTerminalStatus(t *testing.T) {
 		}
 	}
 }
+
+// A burst of parallel requests can rate-limit every account of a realm at once.
+// The pool must stay routable (retry the routed account) instead of answering
+// 500 for the whole cooldown window.
+func TestRealmPoolStaysRoutableWhenEveryAccountCools(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+	cands := exhaustedCandidates(t)
+	files := []pluginapi.HostAuthFileEntry{testAuthEntry("exhaust-a", "record-a", false), testAuthEntry("exhaust-b", "record-b", false), testAuthEntry("cn-only", "cn-uid", false)}
+	creds := map[string]*storedAuth{"exhaust-a": cands[0].Auth, "exhaust-b": cands[1].Auth, "cn-only": {Auth: storedTokens{Domain: "https://copilot.tencent.com"}, Account: storedAccount{UID: "cn-uid"}}}
+	stubAuthSources(t, files, creds)
+	markAuthCooldownReason("exhaust-a", time.Time{}, "429")
+	markAuthCooldownReason("exhaust-b", time.Time{}, "429")
+	pool, storage, err := buildRealmFailoverPool("cb/gpt-6.1-sol", "exhaust-a", storageJSONForAuth(cands[0].Auth), realmGlobal)
+	if err != nil {
+		t.Fatalf("a cooling realm must stay routable: %v", err)
+	}
+	got := pool.ordered(storage)
+	if len(got) != 1 || got[0].AuthID != "exhaust-a" || got[0].Auth == nil {
+		t.Fatalf("pool=%+v", got)
+	}
+	// Without a routed match the pool picks whichever account recovers first.
+	pool, _, err = buildRealmFailoverPool("cb/gpt-6.1-sol", "missing", storageJSONForAuth(cands[0].Auth), realmGlobal)
+	if err != nil || pool.Primary == nil {
+		t.Fatalf("pool=%+v err=%v", pool, err)
+	}
+	// A realm with no account at all still fails fast.
+	creds["exhaust-a"] = &storedAuth{Auth: storedTokens{Domain: "https://copilot.tencent.com"}, Account: storedAccount{UID: "cn-uid"}}
+	creds["exhaust-b"] = &storedAuth{Auth: storedTokens{Domain: "https://copilot.tencent.com"}, Account: storedAccount{UID: "cn-uid-2"}}
+	stubAuthSources(t, files, creds)
+	if _, _, err := buildRealmFailoverPool("cb/gpt-6.1-sol", "exhaust-a", nil, realmGlobal); err == nil {
+		t.Fatal("a realm without any Global account must still error")
+	}
+}
+
+// Soft rate limits must recover quickly; credit exhaustion keeps the long backoff.
+func TestRateLimitCooldownIsCappedButCreditBackoffIsNot(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+	cands := exhaustedCandidates(t)
+	markCandidateUnavailable(cands[0], outcomeRateLimited, "")
+	if until := time.Until(authCooldownUntil(cands[0].AuthID)); until <= 0 || until > maxRateLimitCooldown+time.Minute {
+		t.Fatalf("429 cooldown not capped: %s", until)
+	}
+	for _, c := range cands {
+		resetAuthCooldown(c.AuthID)
+	}
+	markCandidateUnavailable(cands[0], outcomeAccountExhausted, "")
+	if until := time.Until(authCooldownUntil(cands[0].AuthID)); until < 25*time.Minute {
+		t.Fatalf("credit exhaustion lost its long backoff: %s", until)
+	}
+}

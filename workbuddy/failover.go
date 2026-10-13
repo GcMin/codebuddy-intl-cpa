@@ -31,6 +31,14 @@ var (
 // soft rate limits when the upstream reset time cannot be parsed.
 const defaultCooldownDuration = 30 * time.Minute
 
+// maxRateLimitCooldown caps a soft rate-limit (429 / code 6004) cooldown. A
+// burst of parallel requests can 429 every account of a realm within seconds
+// (observed 2026-10-13: 16 accounts cooled at once, then every cb/* request
+// failed for 30 minutes). Capping keeps the outage short: an early retry costs
+// one upstream round-trip, never credit. Credit exhaustion keeps the full
+// backoff because that account really is unusable until it is replenished.
+const maxRateLimitCooldown = 10 * time.Minute
+
 // markAuthCooldown records that the account reached a rate limit and must not
 // be retried until resetAt (zero/past → default 30m cooldown).
 func markAuthCooldown(authID string, resetAt time.Time) {
@@ -68,6 +76,22 @@ func isAuthOnCooldown(authID string) bool {
 	}
 	delete(cooldowns, authID)
 	return false
+}
+
+// authCooldownUntil returns the instant the account may be retried again, or
+// the zero time when it is not cooling down.
+func authCooldownUntil(authID string) time.Time {
+	authID = strings.TrimSpace(authID)
+	if authID == "" {
+		return time.Time{}
+	}
+	cooldownMu.Lock()
+	defer cooldownMu.Unlock()
+	c, ok := cooldowns[authID]
+	if !ok || !time.Now().Before(c.NextRetryAt) {
+		return time.Time{}
+	}
+	return c.NextRetryAt
 }
 
 // resetAuthCooldown clears any cooldown for the account (used by tests and by

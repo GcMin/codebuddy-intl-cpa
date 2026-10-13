@@ -640,3 +640,14 @@
 
 ### Fixed
 - Normalize OpenAI object `tool_choice` for CodeBuddy upstream
+
+### Rate-limit outage fix
+
+- A realm whose accounts are all inside a rate-limit cooldown stays routable:
+  the pool retries the routed account (or the first to recover) instead of
+  answering 500 "no enabled Global CodeBuddy account is available". Observed
+  2026-10-13: a burst of parallel requests 429'd every Global account, then all
+  `cb/*` requests failed for ~30 minutes until the host was restarted.
+- Soft rate-limit (429 / code 6004) cooldowns are capped at 10 minutes; credit
+  exhaustion keeps the 30-minute/reset backoff. Early retries cost one upstream
+  round-trip and never bill a rejected call.
