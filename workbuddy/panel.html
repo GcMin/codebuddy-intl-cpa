@@ -444,7 +444,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
           <div class="switch" id="mm-sw-g-pfx" onclick="mmTogglePrefix('global')"><div class="knob"></div></div>
           <label onclick="mmTogglePrefix('global')" data-i18n="启用前缀">启用前缀</label>
           <div class="pinput">
-            <input id="mm-pfx-g" placeholder="cb/" oninput="mmRenderPrefixPreview('global')">
+            <input id="mm-pfx-g" placeholder="cb/" oninput="mmPrefixInput('global',this.value)">
             <span class="def"><span data-i18n="默认">默认</span>: <code>cb/</code></span>
           </div>
         </div>
@@ -534,7 +534,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
           <div class="switch" id="mm-sw-c-pfx" onclick="mmTogglePrefix('cn')"><div class="knob"></div></div>
           <label onclick="mmTogglePrefix('cn')" data-i18n="启用前缀">启用前缀</label>
           <div class="pinput">
-            <input id="mm-pfx-c" placeholder="cn/" oninput="mmRenderPrefixPreview('cn')">
+            <input id="mm-pfx-c" placeholder="cn/" oninput="mmPrefixInput('cn',this.value)">
             <span class="def"><span data-i18n="默认">默认</span>: <code>cn/</code></span>
           </div>
         </div>
@@ -2110,6 +2110,11 @@ function mmRenderPrefixUI(realm){
 function mmTogglePrefix(realm){
   const st=MM.state[realm];st.pfxOn=!st.pfxOn;
   mmMarkDirty(realm);mmRenderPrefixUI(realm);mmRenderPreview(realm);
+}
+function mmPrefixInput(realm, val){
+  const st=MM.state[realm];if(!st)return;
+  st.pfxVal=(val||"").trim();
+  mmMarkDirty(realm);mmRenderPreview(realm);
 }
 function mmEffPfx(realm){
   const st=MM.state[realm];

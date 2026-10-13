@@ -1372,6 +1372,10 @@ func handleModelsConfigPost(req pluginapi.ManagementRequest) map[string]any {
 			return map[string]any{"error": err.Error()}
 		}
 	}
+	// Nudge the host model registry so a prefix/disabled change is visible on
+	// /v1/models immediately (host.auth.save of an identical file reloads the
+	// clients). Cosmetic no-op on the credential itself.
+	mmNudgeModelRegistry(realm)
 	// The panel refreshes with a GET right after saving; return the fresh
 	// payload anyway so a failed refresh still shows the saved state.
 	return modelsConfigPayload(map[string]string{realm: strings.TrimSpace(body.Auth)})

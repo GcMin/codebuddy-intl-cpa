@@ -257,6 +257,25 @@ func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.
 	return out
 }
 
+// mmNudgeModelRegistry re-saves one auth file (identical content) through
+// host.auth.save. The host treats a save as a config change and reloads its
+// clients + model registry, so a prefix/disabled change is visible on
+// /v1/models immediately — no CPA restart needed. Cosmetic no-op otherwise.
+func mmNudgeModelRegistry(realm string) {
+	for _, authID := range mmAccountsForRealmFn(realm) {
+		sa, _, err := hostAuthGetBundle(authID)
+		if err != nil || sa == nil {
+			continue
+		}
+		raw, err := json.Marshal(sa)
+		if err != nil {
+			continue
+		}
+		_ = hostAuthSaveJSON(authID, raw)
+		return // satu file cukup untuk memicu reload
+	}
+}
+
 // mmFilterDisabled removes models the user turned off in the Model Manager
 // (realm layer resolved for this auth). Strips the emitted prefix before the
 // lookup because the disabled list stores bare catalog ids.
