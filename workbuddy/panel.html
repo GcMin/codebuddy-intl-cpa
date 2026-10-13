@@ -1128,7 +1128,7 @@ function card(a){
   // Live account concurrency: current/limit in-flight requests. Only render
   // when the backend reported it (known); legacy dashboards show no badge.
   const concBadge=a.concurrency_known
-    ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(a.concurrency_limit)}</span>`
+    ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
     : "";
   const badges=(selected?`${tr("<span class=\"badge\" style=\"background:var(--acc-ring);color:var(--acc);border-color:var(--acc)\">使用中</span>")}`:"")+(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
   return `<div class="card${selected?" selected":""}" data-region="${region}" data-auth="${esc(a.auth_index)}">

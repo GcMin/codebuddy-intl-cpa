@@ -7,7 +7,14 @@ const html = fs.readFileSync(path.join(__dirname, '../workbuddy/panel.html'), 'u
 
 // ---- card(): concurrency badge -------------------------------------------------
 const tr = s=>s;
-const esc = s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Use the panel's REAL esc() so numeric inputs fail exactly like in the
+// browser (the original bug: esc(2) -> "(2).replace is not a function").
+const escSrc = html.slice(html.indexOf('function esc('), html.indexOf('function planLabel('));
+vm.runInContext(escSrc, vm.createContext({})); // syntax check only
+const escCtx = {tr};
+vm.createContext(escCtx);
+vm.runInContext(escSrc, escCtx);
+const esc = escCtx.esc;
 const cardCtx = {tr, esc};
 vm.createContext(cardCtx);
 vm.runInContext(html.slice(html.indexOf('function planLabel('), html.indexOf('function card(')) === '' ? '' : html.slice(html.indexOf('function planLabel('), html.indexOf('let currentFilter')), cardCtx);
@@ -17,6 +24,15 @@ test('card renders live concurrency badge with data-conc hook and 0/2 default', 
   const out = cardCtx.card(a);
   assert.match(out, /class="badge conc"/); // idle: no busy/full modifier
   assert.match(out, /data-conc="1"/);
+  assert.match(out, />0\/2</);
+});
+
+test('card does NOT call esc() on the numeric concurrency_limit (regression: .replace is not a function)', () => {
+  // The exact field shape the backend sends: concurrency_limit is a NUMBER.
+  // The old code passed it to esc() directly and killed the whole grid.
+  const a = {auth_index:'1', nickname:'Gary', plan:'pro', region:'global', concurrency_current:0, concurrency_limit:2, concurrency_known:true};
+  let out = '';
+  assert.doesNotThrow(() => { out = cardCtx.card(a); });
   assert.match(out, />0\/2</);
 });
 
