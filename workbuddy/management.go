@@ -234,7 +234,14 @@ func handleManagement(raw []byte) ([]byte, error) {
 	case req.Method == http.MethodGet && path == base+"/models/config":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigGet(req)))
 	case req.Method == http.MethodPost && path == base+"/models/config":
-		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsConfigPost(req)))
+		// Save errors (unknown realm, prefix collision, …) are client errors:
+		// answer 400 with the same {"error": "..."} body the panel already reads.
+		out := handleModelsConfigPost(req)
+		status := http.StatusOK
+		if out["error"] != nil {
+			status = http.StatusBadRequest
+		}
+		return okEnvelope(mgmtJSONResponse(status, out))
 	case req.Method == http.MethodPost && path == base+"/models/refresh":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsRefresh(req)))
 	case req.Method == http.MethodPost && path == base+"/models/test":

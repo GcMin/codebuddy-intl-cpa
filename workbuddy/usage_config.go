@@ -55,7 +55,40 @@ var (
 	// plus per-IP token-bucket rate limiting on mutating endpoints.
 	managementAPIKey   = ""
 	managementAPIKeyMu sync.RWMutex
+
+	// selfURL is the base URL the plugin uses to reach the host's own
+	// management API (live model-registry reload, PLAN-0907b T1). The default
+	// matches the production CPA port; dev/alternate ports override via plugin
+	// config self_url or env WB_SELF_URL.
+	selfURL   = defaultSelfURL
+	selfURLMu sync.RWMutex
+
+	// liveReload gates the post-save model-registry reload trigger. Default on;
+	// set mm_live_reload: false in plugin config to disable.
+	liveReload   = true
+	liveReloadMu sync.RWMutex
 )
+
+// defaultSelfURL targets the standard production CPA management port.
+const defaultSelfURL = "http://127.0.0.1:8317"
+
+// selfURLValue returns the configured host management base URL.
+func selfURLValue() string {
+	selfURLMu.RLock()
+	defer selfURLMu.RUnlock()
+	if strings.TrimSpace(selfURL) == "" {
+		return defaultSelfURL
+	}
+	return selfURL
+}
+
+// liveReloadEnabled reports whether the plugin should trigger a host reload
+// after a successful settings save.
+func liveReloadEnabled() bool {
+	liveReloadMu.RLock()
+	defer liveReloadMu.RUnlock()
+	return liveReload
+}
 
 // Default URL tries localhost first (works for both bare-metal and Docker
 // host-network), falls back to Docker compose service name. The probe runs
@@ -76,6 +109,8 @@ func configure(raw []byte) {
 	nextKeepaliveAuto := true
 	nextDailyBonusAuto := true
 	nextMgmtKey := ""
+	nextSelfURL := ""
+	nextLiveReload := true
 
 	cfgURL, cfgKey := "", ""
 	if len(raw) > 0 {
@@ -112,6 +147,15 @@ func configure(raw []byte) {
 				if strings.HasPrefix(line, "management_key:") {
 					v := strings.TrimSpace(strings.TrimPrefix(line, "management_key:"))
 					nextMgmtKey = strings.Trim(v, "\"'")
+				}
+				if strings.HasPrefix(line, "self_url:") {
+					v := strings.TrimSpace(strings.TrimPrefix(line, "self_url:"))
+					nextSelfURL = strings.Trim(v, "\"'")
+				}
+				if strings.HasPrefix(line, "mm_live_reload:") {
+					v := strings.TrimSpace(strings.TrimPrefix(line, "mm_live_reload:"))
+					v = strings.Trim(v, "\"'")
+					nextLiveReload = v == "true" || v == "1" || v == "yes" || v == "on"
 				}
 				if strings.HasPrefix(line, "token_keepalive:") {
 					v := strings.TrimSpace(strings.TrimPrefix(line, "token_keepalive:"))
@@ -156,6 +200,21 @@ func configure(raw []byte) {
 	managementAPIKeyMu.Lock()
 	managementAPIKey = nextMgmtKey
 	managementAPIKeyMu.Unlock()
+
+	// self_url: config_yaml > env WB_SELF_URL > default (production port).
+	if nextSelfURL == "" {
+		nextSelfURL = strings.TrimSpace(os.Getenv("WB_SELF_URL"))
+	}
+	if nextSelfURL == "" {
+		nextSelfURL = defaultSelfURL
+	}
+	selfURLMu.Lock()
+	selfURL = nextSelfURL
+	selfURLMu.Unlock()
+
+	liveReloadMu.Lock()
+	liveReload = nextLiveReload
+	liveReloadMu.Unlock()
 
 	resolveUsageReport(cfgURL, cfgKey)
 	ensureScheduler()

@@ -9,8 +9,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
@@ -206,19 +211,21 @@ func truncateTestContent(s string, n int) string {
 // ---- Dynamic prefix emission + strip (Model Manager decision 4) ----
 //
 // The Model Manager prefix settings replace the hardcoded cn/ behaviour:
-// effectiveSettings(realm).Prefix{On,Val} decides whether the realm's models
-// are emitted with a prefix and which one (empty value + On = realm default:
-// cn/ for CN, cb/ for Global). Global default is OFF (bare IDs, the historical
-// behaviour), CN default is ON cn/.
+// effectiveSettings(realm, authID).Prefix{On,Val} decides whether the realm's
+// models are emitted with a prefix and which one (empty value + On = realm
+// default: cn/ for CN, cb/ for Global). Global default is OFF (bare IDs, the
+// historical behaviour), CN default is ON cn/. The per-account override is
+// resolved through effectiveSettings, so an account with its own override
+// emits/strips its own prefix (PLAN-0907b T3).
 
-// mmEffectivePrefix returns the prefix string to emit for a realm ("" = bare).
-// On with an empty value = realm default (cn/ for CN, cb/ for Global).
-func mmEffectivePrefix(realm string) string {
-	p := effectiveSettings(realm, "").Prefix
-	if !p.On {
+// mmPrefixFromSettings resolves the client-facing prefix of one settings layer
+// ("" = bare). On with an empty value = realm default (cn/ for CN, cb/ for
+// Global).
+func mmPrefixFromSettings(realm string, s mmSettings) string {
+	if !s.Prefix.On {
 		return ""
 	}
-	v := strings.TrimSpace(p.Val)
+	v := strings.TrimSpace(s.Prefix.Val)
 	if v == "" {
 		return mmDefaultPrefix(realm)
 	}
@@ -226,6 +233,12 @@ func mmEffectivePrefix(realm string) string {
 		v += "/"
 	}
 	return v
+}
+
+// mmEffectivePrefix returns the prefix string to emit for a realm+account
+// ("" = bare). authID == "" resolves the realm layer only.
+func mmEffectivePrefix(realm, authID string) string {
+	return mmPrefixFromSettings(realm, effectiveSettings(realm, authID))
 }
 
 // mmDefaultPrefix is the per-realm default prefix (used when On && Val == "").
@@ -236,15 +249,99 @@ func mmDefaultPrefix(realm string) string {
 	return "cb/"
 }
 
-// applyDynamicPrefix prefixes/normalizes the emitted model IDs for one realm.
-// Replaces prefixCNModels (hardcoded cn/) in the Model Manager flow.
-func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
-	pfx := mmEffectivePrefix(realm)
+// mmOtherRealm returns the realm opposite to realm.
+func mmOtherRealm(realm string) string {
+	if realm == realmCN {
+		return realmGlobal
+	}
+	return realmCN
+}
+
+// mmPrefixValuePattern accepts the prefix characters the panel may send:
+// A-Za-z0-9._- with an optional trailing slash. An empty value means "use the
+// realm default".
+var mmPrefixValuePattern = regexp.MustCompile(`^[A-Za-z0-9._-]+/?$`)
+
+// validatePrefixSettings rejects a Save whose effective prefix would collide
+// with the other realm or with a reserved legacy prefix (PLAN-0907b T2).
+func validatePrefixSettings(realm string, s mmSettings) error {
+	if !s.Prefix.On {
+		return nil
+	}
+	raw := strings.TrimSpace(s.Prefix.Val)
+	if raw != "" && !mmPrefixValuePattern.MatchString(raw) {
+		return fmt.Errorf("invalid prefix %q: use only A-Za-z0-9._- followed by an optional /", raw)
+	}
+	own := mmPrefixFromSettings(realm, s)
+	if own == "" {
+		return nil
+	}
+	other := mmOtherRealm(realm)
+	if otherPfx := mmEffectivePrefix(other, ""); otherPfx != "" && strings.EqualFold(own, otherPfx) {
+		return fmt.Errorf("prefix %q collides with the %s realm prefix %q", own, realmLabel(other), otherPfx)
+	}
+	if realm == realmGlobal && strings.EqualFold(own, "cn/") {
+		return fmt.Errorf("prefix %q is reserved for CN models", own)
+	}
+	if realm == realmCN && strings.EqualFold(own, "cb/") {
+		return fmt.Errorf("prefix %q is reserved for Global models", own)
+	}
+	return nil
+}
+
+// mmPrefixRealm reports which realm owns a client-facing model prefix
+// ("" = bare / unknown). Used for realm-specific failover pools and for
+// isCNModelID. Detection uses the realm-layer effective prefixes plus the
+// legacy cn/ and cb/ defaults; a per-account override prefix is only known to
+// that account, so it is not part of this realm-level classification.
+func mmPrefixRealm(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" {
+		return ""
+	}
+	if strings.HasPrefix(m, "cn/") {
+		return realmCN
+	}
+	if strings.HasPrefix(m, "cb/") {
+		return realmGlobal
+	}
+	// Check the realm prefixes from longest to shortest so a shorter prefix
+	// cannot shadow a longer one.
+	type rp struct {
+		realm  string
+		prefix string
+	}
+	candidates := []rp{
+		{realmCN, mmEffectivePrefix(realmCN, "")},
+		{realmGlobal, mmEffectivePrefix(realmGlobal, "")},
+	}
+	best := ""
+	bestRealm := ""
+	for _, c := range candidates {
+		if c.prefix == "" {
+			continue
+		}
+		p := strings.ToLower(c.prefix)
+		if strings.HasPrefix(m, p) && len(p) > len(best) {
+			best = p
+			bestRealm = c.realm
+		}
+	}
+	return bestRealm
+}
+
+// applyDynamicPrefix prefixes/normalizes the emitted model IDs for one realm
+// (and optional account override). Replaces prefixCNModels (hardcoded cn/).
+func applyDynamicPrefix(models []pluginapi.ModelInfo, realm, authID string) []pluginapi.ModelInfo {
+	pfx := mmEffectivePrefix(realm, authID)
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, m := range models {
 		if pfx == "" {
 			// bare: strip a leading default prefix if the id carries one
-			if strings.HasPrefix(strings.ToLower(m.ID), "cn/") {
+			low := strings.ToLower(m.ID)
+			if strings.HasPrefix(low, "cn/") {
+				m.ID = strings.TrimSpace(m.ID[3:])
+			} else if strings.HasPrefix(low, "cb/") {
 				m.ID = strings.TrimSpace(m.ID[3:])
 			}
 		} else {
@@ -257,30 +354,103 @@ func applyDynamicPrefix(models []pluginapi.ModelInfo, realm string) []pluginapi.
 	return out
 }
 
-// mmNudgeModelRegistry re-saves one auth file (identical content) through
-// host.auth.save. The host treats a save as a config change and reloads its
-// clients + model registry, so a prefix/disabled change is visible on
-// /v1/models immediately — no CPA restart needed. Cosmetic no-op otherwise.
-func mmNudgeModelRegistry(realm string) {
-	for _, authID := range mmAccountsForRealmFn(realm) {
-		sa, _, err := hostAuthGetBundle(authID)
-		if err != nil || sa == nil {
-			continue
-		}
-		raw, err := json.Marshal(sa)
-		if err != nil {
-			continue
-		}
-		_ = hostAuthSaveJSON(authID, raw)
-		return // satu file cukup untuk memicu reload
+// ---- Host model-registry live reload (PLAN-0907b T1) ----
+
+// mmReloadResult is the outcome of one host reload trigger. It is surfaced in
+// the Save response as {"reload": {...}} so the panel can tell the user whether
+// /v1/models already reflects the change or a CPA restart is still needed.
+type mmReloadResult struct {
+	Status string `json:"status"` // ok | failed | disabled | no_credentials
+	HTTP   int    `json:"http,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+// mmReloadClient deliberately bypasses the host HTTP bridge and the host's
+// proxy-url: the target is the CPA management API on localhost, and a proxy
+// would either swallow the call or route it through an upstream proxy.
+var mmReloadClient = &http.Client{
+	Timeout: 3 * time.Second,
+	Transport: &http.Transport{
+		Proxy:              nil,
+		MaxIdleConns:       2,
+		IdleConnTimeout:    30 * time.Second,
+		DisableCompression: true,
+	},
+}
+
+// mmReloadHTTPDo is the HTTP seam for the reload trigger (tests swap it).
+var mmReloadHTTPDo = func(req *http.Request) (*http.Response, error) {
+	return mmReloadClient.Do(req)
+}
+
+var (
+	mmReloadRevMu sync.Mutex
+	mmReloadRev   int64
+)
+
+// mmNextModelsRev returns a strictly increasing revision. The host skips a
+// reload when the value equals the previous one ("hash match"), so two saves
+// inside the same nanosecond must still differ.
+func mmNextModelsRev() string {
+	now := time.Now().UnixNano()
+	mmReloadRevMu.Lock()
+	if now <= mmReloadRev {
+		now = mmReloadRev + 1
 	}
+	mmReloadRev = now
+	mmReloadRevMu.Unlock()
+	return strconv.FormatInt(now, 10)
+}
+
+// mmTriggerHostReload asks the host to refresh the plugin model registry after
+// a successful settings save, by PATCHing one always-changing field
+// (models_rev) into the plugin's own config. CPA 7.2.145 answers that route
+// with an explicit config-reload hook (reloadConfigAfterManagementSaveAsync →
+// ReloadConfigIfChanged → syncPluginModelRuntime), so /v1/models goes fresh in
+// a few hundred ms without restarting CPA.
+//
+// The management credential is never stored: only the Authorization /
+// X-Management-Key headers of the original Save request are forwarded, and the
+// value never reaches a log line.
+func mmTriggerHostReload(hdr http.Header) mmReloadResult {
+	if !liveReloadEnabled() {
+		return mmReloadResult{Status: "disabled"}
+	}
+	authz := strings.TrimSpace(hdr.Get("Authorization"))
+	mgmtKey := strings.TrimSpace(hdr.Get("X-Management-Key"))
+	if authz == "" && mgmtKey == "" {
+		return mmReloadResult{Status: "no_credentials"}
+	}
+	url := strings.TrimRight(selfURLValue(), "/") + "/v0/management/plugins/" + pluginRouteID + "/config"
+	body := []byte(`{"models_rev":"` + mmNextModelsRev() + `"}`)
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewReader(body))
+	if err != nil {
+		return mmReloadResult{Status: "failed", Error: err.Error()}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authz != "" {
+		req.Header.Set("Authorization", authz)
+	}
+	if mgmtKey != "" {
+		req.Header.Set("X-Management-Key", mgmtKey)
+	}
+	resp, err := mmReloadHTTPDo(req)
+	if err != nil {
+		return mmReloadResult{Status: "failed", Error: err.Error()}
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return mmReloadResult{Status: "failed", HTTP: resp.StatusCode, Error: fmt.Sprintf("management API returned %d", resp.StatusCode)}
+	}
+	return mmReloadResult{Status: "ok", HTTP: resp.StatusCode}
 }
 
 // mmFilterDisabled removes models the user turned off in the Model Manager
-// (realm layer resolved for this auth). Strips the emitted prefix before the
-// lookup because the disabled list stores bare catalog ids.
-func mmFilterDisabled(models []pluginapi.ModelInfo, realm string) []pluginapi.ModelInfo {
-	st := effectiveSettings(realm, "")
+// (realm + per-account override resolved for this auth). Strips any known
+// prefix before the lookup because the disabled list stores bare catalog ids.
+func mmFilterDisabled(models []pluginapi.ModelInfo, realm, authID string) []pluginapi.ModelInfo {
+	st := effectiveSettings(realm, authID)
 	if len(st.Disabled) == 0 {
 		return models
 	}
@@ -288,6 +458,7 @@ func mmFilterDisabled(models []pluginapi.ModelInfo, realm string) []pluginapi.Mo
 	for _, id := range st.Disabled {
 		off[strings.ToLower(strings.TrimSpace(id))] = struct{}{}
 	}
+	prefixes := mmKnownPrefixes(realm, authID)
 	out := make([]pluginapi.ModelInfo, 0, len(models))
 	for _, m := range models {
 		id := strings.ToLower(strings.TrimSpace(m.ID))
@@ -295,16 +466,45 @@ func mmFilterDisabled(models []pluginapi.ModelInfo, realm string) []pluginapi.Mo
 		if _, hit := off[id]; hit {
 			continue
 		}
-		for pfx := range map[string]struct{}{"cb/": {}, "cn/": {}} {
+		strip := ""
+		for _, pfx := range prefixes {
 			if strings.HasPrefix(id, pfx) {
-				if _, hit2 := off[strings.TrimPrefix(id, pfx)]; hit2 {
-					goto next
-				}
+				strip = pfx
+				break
+			}
+		}
+		if strip != "" {
+			if _, hit2 := off[strings.TrimPrefix(id, strip)]; hit2 {
+				continue
 			}
 		}
 		out = append(out, m)
-	next:
 	}
+	return out
+}
+
+// mmKnownPrefixes lists every prefix the plugin can emit for a realm+account:
+// the effective prefix of that layer, the other realm's realm-layer prefix and
+// the two legacy defaults (cn/ cb/). Used to strip before disabled lookups and
+// to keep old client configs working.
+func mmKnownPrefixes(realm, authID string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 4)
+	add := func(p string) {
+		p = strings.ToLower(strings.TrimSpace(p))
+		if p == "" {
+			return
+		}
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	add(mmEffectivePrefix(realm, authID))
+	add(mmEffectivePrefix(mmOtherRealm(realm), ""))
+	add("cn/")
+	add("cb/")
 	return out
 }
 
@@ -321,27 +521,28 @@ func mmRealmForAuth(storageJSON []byte) string {
 
 // stripDynamicPrefix removes whatever prefix the realm currently emits from a
 // requested model id (client-facing alias → upstream id). Falls back to the
-// hardcoded cn/ strip when the requested prefix matches the other realm's
-// default (requesting cn/x from the Global realm still resolves x).
-func stripDynamicPrefix(model string, realm string) (string, bool) {
+// other realm's effective prefix and the hardcoded cn/ cb/ defaults so old
+// client configs (cn/glm-5.3) keep resolving after a prefix change.
+func stripDynamicPrefix(model, realm, authID string) (string, bool) {
 	m := strings.TrimSpace(model)
 	low := strings.ToLower(m)
-	// current realm's own prefix
-	if pfx := mmEffectivePrefix(realm); pfx != "" && strings.HasPrefix(low, strings.ToLower(pfx)) {
-		return strings.TrimSpace(m[len(pfx):]), true
+	own := mmEffectivePrefix(realm, authID)
+	if own != "" && strings.HasPrefix(low, strings.ToLower(own)) {
+		return strings.TrimSpace(m[len(own):]), true
 	}
-	// the other realm's default prefix (cn/ or cb/) still strips — keeps old
-	// client configs (cn/glm-5.3) working after a prefix change.
-	for _, other := range []string{"cn/", "cb/"} {
-		if !strings.EqualFold(other, mmEffectivePrefix(realm)) && strings.HasPrefix(low, other) {
-			return strings.TrimSpace(m[len(other):]), true
+	for _, pfx := range mmKnownPrefixes(realm, authID) {
+		if pfx == strings.ToLower(own) {
+			continue
+		}
+		if strings.HasPrefix(low, pfx) {
+			return strings.TrimSpace(m[len(pfx):]), true
 		}
 	}
 	return m, false
 }
 
 // mmRealmHintFromAttributes guesses the realm for a request from its routing
-// attributes (falls back to the requested id itself when unavailable).
+// attributes (fallback only, when the executing auth is unknown).
 func mmRealmHintFromAttributes(attributes map[string]string) string {
 	for _, v := range attributes {
 		lv := strings.ToLower(v)

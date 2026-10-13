@@ -196,24 +196,50 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 	return pool
 }
 
-// buildRequestFailoverPool keeps the legacy route for bare model IDs. A cn/
-// model instead gets a CN-only candidate pool, so neither the routed account
-// nor a later 429 retry can send that request to CodeBuddy Global.
+// buildRequestFailoverPool routes a prefixed model to a realm-only candidate
+// pool: a CN-prefixed id gets CN-only candidates, a Global-prefixed id gets
+// Global-only candidates, so neither the routed account nor a later 429 retry
+// can send that request to the other realm (and the executor strips the model
+// prefix once, against the executing account's realm). Bare model IDs keep the
+// legacy realm-aware route.
 func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) (*failoverPool, []byte, error) {
-	if !isCNModelID(model) {
+	realm := mmPrefixRealm(model)
+	if realm == "" {
 		return buildFailoverPool(routedAuthID), routedStorage, nil
 	}
+	return buildRealmFailoverPool(model, routedAuthID, routedStorage, realm)
+}
 
+// authInRealm reports whether a credential belongs to the given realm.
+func authInRealm(sa *storedAuth, realm string) bool {
+	if sa == nil {
+		return false
+	}
+	if realm == realmGlobal {
+		return !isCNAuth(sa)
+	}
+	return isCNAuth(sa)
+}
+
+func realmLabel(realm string) string {
+	if realm == realmGlobal {
+		return "Global"
+	}
+	return "CN"
+}
+
+// buildRealmFailoverPool builds the candidate pool for one realm only.
+func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, realm string) (*failoverPool, []byte, error) {
 	var routedAuth *storedAuth
 	if len(routedStorage) > 0 {
 		routedAuth, _ = parseStored(routedStorage)
 	}
 	files, err := loadAuthList()
 	if err != nil {
-		if isCNAuth(routedAuth) {
+		if authInRealm(routedAuth, realm) {
 			return &failoverPool{Primary: &failoverCandidate{AuthID: routedAuthID, Auth: routedAuth}}, routedStorage, nil
 		}
-		return nil, nil, fmt.Errorf("cannot find a CN CodeBuddy account for model %q: %w", model, err)
+		return nil, nil, fmt.Errorf("cannot find a %s CodeBuddy account for model %q: %w", realmLabel(realm), model, err)
 	}
 
 	type eligible struct {
@@ -226,7 +252,7 @@ func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) 
 			continue
 		}
 		sa, getErr := authGetSource(f.AuthIndex)
-		if getErr != nil || !isCNAuth(sa) {
+		if getErr != nil || !authInRealm(sa, realm) {
 			continue
 		}
 		candidates = append(candidates, eligible{
@@ -235,7 +261,7 @@ func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) 
 		})
 	}
 	if len(candidates) == 0 {
-		return nil, nil, fmt.Errorf("no enabled CN CodeBuddy account is available for model %q", model)
+		return nil, nil, fmt.Errorf("no enabled %s CodeBuddy account is available for model %q", realmLabel(realm), model)
 	}
 
 	selected := 0
@@ -263,7 +289,7 @@ func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) 
 	}
 	storage, err := json.Marshal(pool.Primary.Auth)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot prepare selected CN account: %w", err)
+		return nil, nil, fmt.Errorf("cannot prepare selected %s account: %w", realmLabel(realm), err)
 	}
 	return pool, storage, nil
 }

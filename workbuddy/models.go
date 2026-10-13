@@ -89,7 +89,7 @@ func prefixCNModels(models []pluginapi.ModelInfo) []pluginapi.ModelInfo {
 }
 
 func isCNModelID(model string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "cn/")
+	return mmPrefixRealm(model) == realmCN
 }
 
 func stripCNModelPrefix(model string) (string, bool) {
@@ -430,13 +430,19 @@ func cacheModelAliases(host pluginapi.HostConfigSummary) {
 }
 
 // resolveUpstreamModel maps an aliased requested model back to the real
-// upstream model ID. Returns the input unchanged when nothing matches.
-func resolveUpstreamModel(model string, attributes map[string]string) string {
+// upstream model ID. realm/authID describe the account that will execute the
+// request (accountRegion(sa) + req.AuthID); attributes are only a fallback
+// realm hint when the executing auth is unknown. Returns the input unchanged
+// when nothing matches.
+func resolveUpstreamModel(model, realm, authID string, attributes map[string]string) string {
 	m := strings.TrimSpace(model)
 	if m == "" {
 		return model
 	}
-	if upstreamModel, prefixed := stripDynamicPrefix(m, mmRealmHintFromAttributes(attributes)); prefixed {
+	if realm == "" {
+		realm = mmRealmHintFromAttributes(attributes)
+	}
+	if upstreamModel, prefixed := stripDynamicPrefix(m, realm, authID); prefixed {
 		return upstreamModel
 	}
 	key := strings.ToLower(m)
@@ -553,8 +559,8 @@ func handleModelStatic(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	cacheModelAliases(req.Host)
-	models := mmFilterDisabled(wbModels(), realmGlobal)
-	models = append(models, applyDynamicPrefix(mmFilterDisabled(wbCNModels(), realmCN), realmCN)...)
+	models := mmFilterDisabled(wbModels(), realmGlobal, "")
+	models = append(models, applyDynamicPrefix(mmFilterDisabled(wbCNModels(), realmCN, ""), realmCN, "")...)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
@@ -574,6 +580,7 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 	// the hardcoded prefixCNModels; also union the Model Manager catalog so the
 	// hidden/static models stay visible to the client.
 	realm := mmRealmForAuth(req.StorageJSON)
+	authID := strings.TrimSpace(req.AuthID)
 	extra := catalogModelInfos(realm)
 	seen := make(map[string]bool, len(models))
 	for _, m := range models {
@@ -584,8 +591,8 @@ func handleModelForAuth(raw []byte) ([]byte, error) {
 			models = append(models, m)
 		}
 	}
-	models = mmFilterDisabled(models, realm)
-	models = applyDynamicPrefix(models, realm)
+	models = mmFilterDisabled(models, realm, authID)
+	models = applyDynamicPrefix(models, realm, authID)
 	models = filterExcludedModels(models, req.Host)
 	return okEnvelope(pluginapi.ModelResponse{Provider: providerName, Models: models})
 }
