@@ -15,7 +15,7 @@ Tidak ada keputusan di luar brief yang saya ambil sendiri — lihat § Catatan u
 ## Deliverables
 
 Branch `fix/mm-live-reload`, worktree `/tmp/cbi-w-reload`, basis `a462bac`.
-Commit: `e86e617` (`feat(model-manager): live model-registry reload + per-realm/per-account prefix routing`), di-push ke `origin/fix/mm-live-reload`.
+Commit: `7b73cfe` (`feat(model-manager): live model-registry reload + per-realm/per-account prefix routing`), di-push ke `origin/fix/mm-live-reload`.
 
 File diubah (semua di `workbuddy/`):
 
