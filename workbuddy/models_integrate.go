@@ -270,7 +270,7 @@ func validatePrefixSettings(realm string, s mmSettings) error {
 	}
 	raw := strings.TrimSpace(s.Prefix.Val)
 	if raw != "" && !mmPrefixValuePattern.MatchString(raw) {
-		return fmt.Errorf("invalid prefix %q: use only A-Za-z0-9._- followed by an optional /", raw)
+		return fmt.Errorf("invalid prefix %s: use only A-Za-z0-9._- followed by an optional /", raw)
 	}
 	own := mmPrefixFromSettings(realm, s)
 	if own == "" {
@@ -278,13 +278,13 @@ func validatePrefixSettings(realm string, s mmSettings) error {
 	}
 	other := mmOtherRealm(realm)
 	if otherPfx := mmEffectivePrefix(other, ""); otherPfx != "" && strings.EqualFold(own, otherPfx) {
-		return fmt.Errorf("prefix %q collides with the %s realm prefix %q", own, realmLabel(other), otherPfx)
+		return fmt.Errorf("prefix %s collides with the %s realm prefix %s", own, realmLabel(other), otherPfx)
 	}
 	if realm == realmGlobal && strings.EqualFold(own, "cn/") {
-		return fmt.Errorf("prefix %q is reserved for CN models", own)
+		return fmt.Errorf("prefix %s is reserved for CN models", own)
 	}
 	if realm == realmCN && strings.EqualFold(own, "cb/") {
-		return fmt.Errorf("prefix %q is reserved for Global models", own)
+		return fmt.Errorf("prefix %s is reserved for Global models", own)
 	}
 	return nil
 }
