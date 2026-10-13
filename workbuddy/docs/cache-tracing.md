@@ -28,6 +28,16 @@ values, or raw upstream errors enter the trace. Hashes are still sensitive
 metadata: someone who knows a candidate prompt can compare its digest. Keep the
 local accounting file and management API private; do not publish trace logs.
 
+## Panel view
+
+In **Usage CodeBuddy**, expand **Cache hash** below the cache read/write counts.
+It shows the hit ratio, outgoing CID, content-free hashes and failover attempt
+accounts/status. The previous loaded request with the same CID/model is compared
+for account changes, changed system/tools/options and leading message equality.
+Clear account filters to see cross-account neighbors. Records from before logging
+show “No hash”; comparisons are limited to the loaded records and 512-message
+hash coverage. A low-hit badge is an observation, not a root-cause verdict.
+
 ## Compare a miss
 
 Run the following where you can read the usage log:

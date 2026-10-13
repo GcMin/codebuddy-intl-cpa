@@ -52,6 +52,16 @@
   Check now button. Skip markers use the same state path, lock, and atomic
   writer as Model Manager; older markers migrate on read.
 
+### Model and cache diagnostics display
+
+- Global OpenAI rows display 272K–1M and a >272K input / 2× credits notice
+  requested by the operator. This is UI guidance only, not a billing or API
+  context-limit change; CN and other vendors keep their existing displays.
+- Usage rows expose an expandable Cache hash view: hit ratio, CID, hashes,
+  attempt accounts/status, and comparisons with the prior loaded same-session
+  request. Missing historical traces/filtered neighbors and capped hashes are
+  explicit. No prompt contents or arbitrary trace fields are rendered.
+
 ### Cache miss observability
 
 - Record content-free inbound/upstream fingerprints in usage JSONL: system,
