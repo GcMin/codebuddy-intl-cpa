@@ -112,6 +112,11 @@ Stored append-only as JSONL next to the auth store, with rotation at ~50 MB
 (`request-usage-<YYYY-MM>.jsonl`, older data retained). Powers the **Usage CodeBuddy**
 panel section. No credentials are ever written.
 
+The dev branch also records content-free request hashes and actual outgoing CID
+alongside usage to investigate transient cache misses. See
+[cache tracing](workbuddy/docs/cache-tracing.md) for fields, privacy limits, and
+the comparison script. It does not change request bodies or replay cache misses.
+
 This is also what made the cache economics visible: a 24k-token request with a full cache
 hit bills ~0.05 credit instead of ~0.62.
 

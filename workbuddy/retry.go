@@ -332,7 +332,7 @@ func (p *failoverPool) ordered(primaryStorage []byte) []*failoverCandidate {
 // A 200 response that closes before any data chunk is treated as an error
 // (errEmptyStream): the upstream accepted and billed the request but produced
 // no output. Such attempts must NOT be retried on another account.
-func upstreamAttempt(ctx context.Context, body []byte, model string, cand *failoverCandidate) ([]byte, error) {
+func upstreamAttempt(ctx context.Context, body []byte, model string, cand *failoverCandidate, traces ...*requestCacheTrace) ([]byte, error) {
 	if cand == nil || cand.Auth == nil {
 		return nil, fmt.Errorf("no auth available")
 	}
@@ -341,7 +341,10 @@ func upstreamAttempt(ctx context.Context, body []byte, model string, cand *failo
 		return nil, err
 	}
 	backendHeaders(httpReq, cand.Auth)
+	trace := firstCacheTrace(traces)
+	attempt := trace.beginAttempt(httpReq, cand.AuthID)
 	stream, statusCode, _, err := hostHTTPDoStream(httpReq)
+	trace.finishAttempt(attempt, statusCode)
 	if err != nil {
 		return nil, err
 	}

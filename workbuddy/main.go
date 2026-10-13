@@ -793,6 +793,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	// prepareUpstreamBody does forceStream + normalizeTools + rewriteSystem +
 	// ensureSystemMessage + rewriteModel in ONE unmarshal/marshal pass.
 	body := prepareUpstreamBody(req.Payload, req.OriginalRequest, sa, upstreamModel)
+	trace := newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
 
 	// Failover (v0.8.8): when the routed account answers 429 / code 6004, the
 	// same request is retried on the next eligible enabled account. One usage
@@ -801,7 +802,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	cands := pool.ordered(req.StorageJSON)
 	var completion []byte
 	fin := runFailover(cands, func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
-		out, err := upstreamAttempt(context.Background(), body, req.Model, cand)
+		out, err := upstreamAttempt(context.Background(), body, req.Model, cand, trace)
 		completion = out // nil on error
 		return classifyNonStream(out, err)
 	})
@@ -811,13 +812,13 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 		usageAuthID := fin.AuthID
 		usageUID := candUID(answered, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, usageDetailFromCompletion(completion), false, 0, "")
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, usageMapFromCompletion(completion), false)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, usageMapFromCompletion(completion), false, trace)
 		onFailoverSuccess(req.AuthID, fin.AuthID, candRecordID(answered, fin.AuthID), authUID)
 		return okEnvelope(pluginapi.ExecutorResponse{Payload: completion})
 	default:
 		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, nil, true)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, nil, true, trace)
 		// Exhaustion is handled non-destructively by the retry loop, not by
 		// lifecycle's Global delete policy.
 		if fin.Outcome == outcomeStop && fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
@@ -867,6 +868,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	}
 	// Single-pass JSON rewrite (see handleExecExecute for the non-stream path).
 	body = prepareUpstreamBody(body, nil, sa, upstreamModel)
+	trace := newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
 
 	headers := streamHeaders()
 	sseFramed := clientNeedsSSEFrame(req.Metadata)
@@ -880,7 +882,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 		fin := runFailover(cands, func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
 			var statusCode int
 			var err error
-			chunks, statusCode, err = collectStreamAttempt(body, cand, sseFramed, collector)
+			chunks, statusCode, err = collectStreamAttempt(body, cand, sseFramed, collector, trace)
 			if err != nil {
 				if len(chunks) > 0 {
 					// Partial data already collected — the sync path returns it
@@ -907,7 +909,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 			usageAuthID := fin.AuthID
 			usageUID := candUID(answered, authUID)
 			publishUsage(req.Model, upstreamModel, usageAuthID, started, collector.detail(), false, 0, "")
-			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), false)
+			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), false, trace)
 			onFailoverSuccess(req.AuthID, fin.AuthID, candRecordID(answered, fin.AuthID), authUID)
 			return okEnvelope(streamResponse{Headers: headers, Chunks: chunks})
 		default:
@@ -918,12 +920,12 @@ func handleExecStream(raw []byte) ([]byte, error) {
 				usageAuthID := fin.AuthID
 				usageUID := candUID(answered, authUID)
 				publishUsage(req.Model, upstreamModel, usageAuthID, started, collector.detail(), true, fin.Status, fin.Body)
-				recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+				recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 				return okEnvelope(streamResponse{Headers: headers, Chunks: chunks})
 			}
 			usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
 			publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 			if fin.Outcome == outcomeStop && fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
 				reconcileByUID(usageUID, fin.Status, fin.Body)
 			}
@@ -941,21 +943,24 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	// sharedHTTPClient's 120s timeout, holding a pool slot the whole time.
 	ctx, cancel := context.WithCancel(context.Background())
 	cands := pool.ordered(req.StorageJSON)
-	go pumpWithFailover(ctx, cancel, req, body, upstreamModel, authUID, started, sseFramed, cands)
+	go pumpWithFailover(ctx, cancel, req, body, upstreamModel, authUID, started, sseFramed, cands, trace)
 	return okEnvelope(streamResponse{Headers: headers})
 }
 
 // collectStreamAttempt runs one synchronous upstream stream attempt against
 // cand, cleaning chunks through the collector. Mirrors the legacy
 // collectUpstreamStream body, parameterized by candidate.
-func collectStreamAttempt(body []byte, cand *failoverCandidate, sseFramed bool, collector *sseUsageCollector) ([]pluginapi.ExecutorStreamChunk, int, error) {
+func collectStreamAttempt(body []byte, cand *failoverCandidate, sseFramed bool, collector *sseUsageCollector, traces ...*requestCacheTrace) ([]pluginapi.ExecutorStreamChunk, int, error) {
 	httpReq, err := http.NewRequest(http.MethodPost, endpointChatFor(cand.Auth), bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}
 	backendHeaders(httpReq, cand.Auth)
+	trace := firstCacheTrace(traces)
+	attempt := trace.beginAttempt(httpReq, cand.AuthID)
 	// Compliance: route via host.http.do_stream so request-log captures the call.
 	stream, statusCode, _, err := hostHTTPDoStream(httpReq)
+	trace.finishAttempt(attempt, statusCode)
 	if err != nil {
 		return nil, 0, fmt.Errorf("http_error: %w", err)
 	}

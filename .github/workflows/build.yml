@@ -48,6 +48,9 @@ jobs:
       - name: Panel regression tests
         working-directory: .
         run: node --test scripts/test-panel-*.cjs
+      - name: Cache trace comparison tests
+        working-directory: .
+        run: python3 scripts/test-cache-trace-compare.py
       - name: Test
         run: go test ./...
       - name: Vet

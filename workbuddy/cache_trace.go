@@ -1,0 +1,174 @@
+// cache_trace.go records bounded, content-free request fingerprints alongside
+// accounting. It never changes the request/CID and never stores prompt text,
+// headers, credentials, tool names/arguments, or raw upstream errors.
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"hash"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+const cacheTraceMaxMessages = 512
+
+// Hashes are SHA-256 truncated to 128 bits. Ordered message/prefix hashes let
+// us find the first changed message, even for histories containing secret text.
+// Lists are capped; full messages_hash still covers messages beyond the cap.
+type cacheBodyFingerprint struct {
+	BodyBytes       int      `json:"body_bytes"`
+	BodyHash        string   `json:"body_hash"`
+	ValidJSON       bool     `json:"valid_json"`
+	SystemHash      string   `json:"system_hash,omitempty"`
+	FirstUserHash   string   `json:"first_user_hash,omitempty"`
+	ToolsHash       string   `json:"tools_hash,omitempty"`
+	OptionsHash     string   `json:"options_hash,omitempty"`
+	MessageCount    int      `json:"message_count"`
+	MessagesHash    string   `json:"messages_hash,omitempty"`
+	MessageHashes   []string `json:"message_hashes,omitempty"`
+	PrefixHashes    []string `json:"prefix_hashes,omitempty"`
+	HashesTruncated bool     `json:"hashes_truncated,omitempty"`
+}
+
+type cacheTraceAttempt struct {
+	AuthID            string `json:"auth_id"`
+	CID               string `json:"cid"`
+	UpstreamRequestID string `json:"upstream_request_id"`
+	StartedAt         string `json:"started_at"`
+	Status            int    `json:"status,omitempty"`
+}
+
+type requestCacheTrace struct {
+	Version       int                  `json:"version"`
+	RequestID     string               `json:"request_id"` // plugin-generated; safe log correlation
+	HostRequestID string               `json:"host_request_id,omitempty"`
+	StartedAt     string               `json:"started_at"`
+	Inbound       cacheBodyFingerprint `json:"inbound"`
+	Upstream      cacheBodyFingerprint `json:"upstream"`
+	Attempts      []cacheTraceAttempt  `json:"attempts,omitempty"`
+}
+
+func traceHash(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:16])
+}
+
+func traceDigest(h hash.Hash) string { return hex.EncodeToString(h.Sum(nil)[:16]) }
+
+// Hash length-framed parts to avoid ambiguous concatenations. JSON field values
+// remain exact bytes (wire serialization differences must remain observable).
+func tracePart(h hash.Hash, b []byte) {
+	fmt.Fprintf(h, "%d:", len(b))
+	_, _ = h.Write(b)
+}
+
+func fingerprintCacheBody(body []byte) cacheBodyFingerprint {
+	out := cacheBodyFingerprint{BodyBytes: len(body), BodyHash: traceHash(body)}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(body, &obj) != nil || obj == nil {
+		return out
+	}
+	out.ValidJSON = true
+	var messages []json.RawMessage
+	_ = json.Unmarshal(obj["messages"], &messages)
+	out.MessageCount = len(messages)
+	system, prefix := sha256.New(), sha256.New()
+	for i, m := range messages {
+		tracePart(prefix, m)
+		if i < cacheTraceMaxMessages {
+			out.MessageHashes = append(out.MessageHashes, traceHash(m))
+			out.PrefixHashes = append(out.PrefixHashes, traceDigest(prefix))
+		}
+		var msg struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}
+		if json.Unmarshal(m, &msg) != nil {
+			continue
+		}
+		if msg.Role == "system" || msg.Role == "developer" {
+			tracePart(system, msg.Content)
+		}
+		if msg.Role == "user" && out.FirstUserHash == "" {
+			out.FirstUserHash = traceHash(msg.Content)
+		}
+	}
+	out.SystemHash = traceDigest(system)
+	out.MessagesHash = traceDigest(prefix)
+	out.HashesTruncated = len(messages) > cacheTraceMaxMessages
+	// Tools and legacy functions affect the provider prefix independently of CID.
+	tools, _ := json.Marshal(map[string]json.RawMessage{"tools": obj["tools"], "functions": obj["functions"]})
+	out.ToolsHash = traceHash(tools)
+	delete(obj, "messages")
+	delete(obj, "tools")
+	delete(obj, "functions")
+	options, _ := json.Marshal(obj)
+	out.OptionsHash = traceHash(options)
+	return out
+}
+
+// Host-supplied metadata/IDs may be arbitrary client input. Only short hexadecimal
+// correlation IDs/UUIDs are emitted verbatim; everything else is hashed.
+func traceSafeID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	if len(id) <= 64 {
+		safe := true
+		for _, c := range id {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' || c == '-') {
+				safe = false
+				break
+			}
+		}
+		if safe {
+			return id
+		}
+	}
+	return "hash:" + traceHash([]byte(id))
+}
+
+func newRequestCacheTrace(payload, original, upstream []byte, metadata map[string]any, started time.Time) *requestCacheTrace {
+	if len(payload) == 0 {
+		payload = original
+	}
+	t := &requestCacheTrace{Version: 1, RequestID: randomHex(16), StartedAt: started.UTC().Format(time.RFC3339Nano), Inbound: fingerprintCacheBody(payload), Upstream: fingerprintCacheBody(upstream)}
+	for _, k := range []string{"request_id", "requestId"} {
+		if s, ok := metadata[k].(string); ok && s != "" {
+			t.HostRequestID = traceSafeID(s)
+			break
+		}
+	}
+	return t
+}
+
+// One trace belongs to exactly one inbound request/goroutine. Fingerprints are
+// built once, while failover appends only the actual outgoing header identities.
+func (t *requestCacheTrace) beginAttempt(req *http.Request, authID string) int {
+	if t == nil {
+		return -1
+	}
+	a := cacheTraceAttempt{AuthID: traceSafeID(authID), CID: traceSafeID(req.Header.Get("X-Conversation-ID")), UpstreamRequestID: traceSafeID(req.Header.Get("X-Request-ID")), StartedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	t.Attempts = append(t.Attempts, a)
+	fmt.Fprintf(os.Stderr, "[workbuddy] cache-trace id=%s attempt=%d auth=%s cid=%s upstream_request=%s bytes=%d messages=%d\n", t.RequestID, len(t.Attempts), a.AuthID, a.CID, a.UpstreamRequestID, t.Upstream.BodyBytes, t.Upstream.MessageCount)
+	return len(t.Attempts) - 1
+}
+
+func (t *requestCacheTrace) finishAttempt(index, status int) {
+	if t != nil && index >= 0 && index < len(t.Attempts) {
+		t.Attempts[index].Status = status
+	}
+}
+
+func firstCacheTrace(traces []*requestCacheTrace) *requestCacheTrace {
+	if len(traces) > 0 {
+		return traces[0]
+	}
+	return nil
+}

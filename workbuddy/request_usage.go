@@ -31,22 +31,23 @@ import (
 // requestUsageRecord is one JSONL line: metadata of a single request.
 // Timestamp is RFC3339 UTC.
 type requestUsageRecord struct {
-	Timestamp        string  `json:"timestamp"`
-	AuthIndex        string  `json:"auth_index"`
-	AuthID           string  `json:"auth_id,omitempty"`
-	Nickname         string  `json:"nickname,omitempty"`
-	Region           string  `json:"region,omitempty"` // global | cn
-	Model            string  `json:"model"`            // upstream model
-	Alias            string  `json:"alias,omitempty"`  // requested alias when different
-	InputTokens      int64   `json:"input_tokens"`
-	OutputTokens     int64   `json:"output_tokens"`
-	ReasoningTokens  int64   `json:"reasoning_tokens"`
-	CacheReadTokens  int64   `json:"cache_read_tokens"`  // = hit
-	CacheWriteTokens int64   `json:"cache_write_tokens"` // = write
-	TotalTokens      int64   `json:"total_tokens"`
-	Credit           float64 `json:"credit"` // upstream credit from final chunk (0 = free/under-threshold/length-cut; never estimated)
-	Failed           bool    `json:"failed"`
-	LatencyMS        int64   `json:"latency_ms"`
+	Timestamp        string             `json:"timestamp"`
+	AuthIndex        string             `json:"auth_index"`
+	AuthID           string             `json:"auth_id,omitempty"`
+	Nickname         string             `json:"nickname,omitempty"`
+	Region           string             `json:"region,omitempty"` // global | cn
+	Model            string             `json:"model"`            // upstream model
+	Alias            string             `json:"alias,omitempty"`  // requested alias when different
+	InputTokens      int64              `json:"input_tokens"`
+	OutputTokens     int64              `json:"output_tokens"`
+	ReasoningTokens  int64              `json:"reasoning_tokens"`
+	CacheReadTokens  int64              `json:"cache_read_tokens"`  // = hit
+	CacheWriteTokens int64              `json:"cache_write_tokens"` // = write
+	TotalTokens      int64              `json:"total_tokens"`
+	Credit           float64            `json:"credit"` // upstream credit from final chunk (0 = free/under-threshold/length-cut; never estimated)
+	Failed           bool               `json:"failed"`
+	LatencyMS        int64              `json:"latency_ms"`
+	CacheTrace       *requestCacheTrace `json:"cache_trace,omitempty"`
 }
 
 const (
@@ -228,6 +229,11 @@ func (s *requestUsageStore) record(rec requestUsageRecord) {
 	ts, _ := time.Parse(time.RFC3339Nano, rec.Timestamp)
 	if fi, err := os.Stat(path); err == nil && fi.Size() > usageLogMaxBytes {
 		rot := filepath.Join(s.dir, "request-usage-"+ts.Local().Format("2006-01")+".jsonl")
+		if _, err := os.Stat(rot); err == nil {
+			// A second rotation in the same month must not overwrite the first
+			// forensic log (fingerprints make the cap reachable sooner).
+			rot = filepath.Join(s.dir, "request-usage-"+ts.Local().Format("2006-01")+".part-"+ts.UTC().Format("20060102T150405.000000000")+".jsonl")
+		}
 		if rot != path {
 			_ = os.Rename(path, rot)
 		}
@@ -649,12 +655,17 @@ func buildUsageRecord(requestedModel, upstreamModel, authID, authUID string, sta
 
 // recordUsageMap is the single hook for executor paths that observed the
 // upstream usage chunk map (stream collectors, folded completions).
-func recordUsageMap(requestedModel, upstreamModel, authID, authUID string, started time.Time, m map[string]any, failed bool) {
+func recordUsageMap(requestedModel, upstreamModel, authID, authUID string, started time.Time, m map[string]any, failed bool, traces ...*requestCacheTrace) {
 	if len(m) == 0 && !failed {
 		return // no usage signal at all and no failure — nothing worth logging
 	}
 	detail, credit := usagePartsFromMap(m)
-	usageStore.record(buildUsageRecord(requestedModel, upstreamModel, authID, authUID, started, detail, credit, failed))
+	record := buildUsageRecord(requestedModel, upstreamModel, authID, authUID, started, detail, credit, failed)
+	record.CacheTrace = firstCacheTrace(traces)
+	usageStore.record(record)
+	if record.CacheTrace != nil {
+		fmt.Fprintf(os.Stderr, "[workbuddy] cache-trace result id=%s auth=%s input=%d read=%d write=%d credit=%.4f failed=%t\n", record.CacheTrace.RequestID, traceSafeID(authID), record.InputTokens, record.CacheReadTokens, record.CacheWriteTokens, record.Credit, failed)
+	}
 }
 
 // -----------------------------------------------------------------------------

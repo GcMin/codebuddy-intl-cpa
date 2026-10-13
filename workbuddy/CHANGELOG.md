@@ -52,6 +52,16 @@
   Check now button. Skip markers use the same state path, lock, and atomic
   writer as Model Manager; older markers migrate on read.
 
+### Cache miss observability
+
+- Record content-free inbound/upstream fingerprints in usage JSONL: system,
+  first-user, tool/schema, options, ordered message/prefix hashes, and body size.
+  Capture actual CID/request IDs and account/status per failover attempt without
+  logging prompt content or credentials. Hash lists cap at 512 messages.
+- Add a same-CID/account comparison script and trace persistence/privacy tests.
+  Preserve older evidence during repeated JSONL rotation in the same month.
+  Tracing does not change cache keys, retry policy, or request payloads.
+
 ### Exhausted-account failover
 
 - Explicit credit rejection (HTTP 402, code 14018, or credit-exhaustion text

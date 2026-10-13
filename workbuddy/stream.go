@@ -66,7 +66,11 @@ func streamHeaders() http.Header {
 // Once any chunk reached the client the stream is committed and never
 // replayed. Usage is recorded once per inbound request: success on the
 // answering account, one failure line when every attempt was rate-limited.
-func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req executorStreamRequest, body []byte, upstreamModel, authUID string, started time.Time, sseFramed bool, cands []*failoverCandidate) {
+func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req executorStreamRequest, body []byte, upstreamModel, authUID string, started time.Time, sseFramed bool, cands []*failoverCandidate, traces ...*requestCacheTrace) {
+	trace := firstCacheTrace(traces)
+	if trace == nil {
+		trace = newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+	}
 	if cancel != nil {
 		defer cancel()
 	}
@@ -88,7 +92,8 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 			return false, 0, err
 		}
 		backendHeaders(httpReq, cand.Auth)
-		return pumpAttempt(httpReq, streamID, sseFramed, req.Model, upstreamModel, cand.AuthID, candUID(cand, authUID), started, collector)
+		trace.beginAttempt(httpReq, cand.AuthID)
+		return pumpAttempt(httpReq, streamID, sseFramed, req.Model, upstreamModel, cand.AuthID, candUID(cand, authUID), started, collector, trace)
 	})
 
 	switch fin.Outcome {
@@ -97,14 +102,14 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 		usageAuthID := fin.AuthID
 		usageUID := candUID(answered, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, collector.detail(), false, 0, "")
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), false)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), false, trace)
 		onFailoverSuccess(req.AuthID, fin.AuthID, candRecordID(answered, fin.AuthID), authUID)
 	case outcomeRateLimited, outcomeAccountExhausted:
 		// Every eligible account was rejected before a chunk. Do not invoke
 		// destructive lifecycle; the retry loop already quarantined accounts.
 		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 		streamEmitError(streamID, fmt.Sprintf("upstream %d: %s", fin.Status, truncateRedacted(fin.Body, 200)))
 	default: // outcomeStop
 		if fin.Emitted {
@@ -116,7 +121,7 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 			usageAuthID := firstNonEmpty(fin.AuthID, req.AuthID)
 			usageUID := candUID(answered, authUID)
 			publishUsage(req.Model, upstreamModel, usageAuthID, started, collector.detail(), true, fin.Status, fin.Body)
-			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 			if fin.Status > 0 {
 				streamEmitError(streamID, fmt.Sprintf("upstream %d: %s", fin.Status, truncateRedacted(fin.Body, 200)))
 			} else if fin.Err != nil {
@@ -126,7 +131,7 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 		}
 		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 		if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) && !isAccountExhaustedResponse(fin.Status, fin.Body) {
 			go reconcileByUID(usageUID, fin.Status, fin.Body)
 		}
@@ -156,8 +161,11 @@ var streamEmitSource = streamEmit
 // A 200 stream that closes without any data chunk is surfaced as
 // errEmptyStream so the failover loop stops (never retried on another
 // account) and the client gets a proper error instead of a silent success.
-func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, requestedModel, upstreamModel, authID, authUID string, started time.Time, collector *sseUsageCollector) (bool, int, error) {
+func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, requestedModel, upstreamModel, authID, authUID string, started time.Time, collector *sseUsageCollector, traces ...*requestCacheTrace) (bool, int, error) {
 	stream, statusCode, _, err := hostHTTPDoStream(httpReq)
+	if trace := firstCacheTrace(traces); trace != nil {
+		trace.finishAttempt(len(trace.Attempts)-1, statusCode)
+	}
 	if err != nil {
 		return false, 0, fmt.Errorf("http_error: %w", err)
 	}

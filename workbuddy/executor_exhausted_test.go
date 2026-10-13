@@ -103,6 +103,23 @@ func TestExecutorCreditFailoverIntegration(t *testing.T) {
 				if len(records) != 1 || records[0].AuthID != "exhaust-b" || records[0].AuthIndex != "exhaust-b" || records[0].Failed != all {
 					t.Fatalf("records=%+v", records)
 				}
+				trace := records[0].CacheTrace
+				if trace == nil || len(trace.Attempts) != 2 || trace.Attempts[0].Status != 429 {
+					t.Fatalf("missing per-attempt trace: %+v", trace)
+				}
+				wantFinalStatus := 200
+				if all {
+					wantFinalStatus = 429
+				}
+				if trace.Attempts[1].Status != wantFinalStatus {
+					t.Fatalf("final HTTP status lost: %+v", trace.Attempts)
+				}
+				if trace.Attempts[0].CID != cids[0] || trace.Attempts[1].CID != cids[1] {
+					t.Fatal("trace did not capture actual upstream CIDs")
+				}
+				if trace.Upstream.BodyHash != traceHash([]byte(bodies[0])) || trace.RequestID == "" {
+					t.Fatal("trace does not match outbound body")
+				}
 				if !candidateOnCooldown(cands[0]) {
 					t.Fatal("exhausted account was not skipped")
 				}
