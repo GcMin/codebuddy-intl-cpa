@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.7
+## 0.9.7 (unreleased)
 
 ### Model Manager (Global / CN)
 
@@ -19,9 +19,16 @@
   is disabled.
 - Advanced: missing-model fallback and retry-on-hard-error fallback (both
   opt-in, off by default; retry marked with `X-WB-Fallback-From`).
-- Save scopes: all accounts of the realm or a single account override
-  (default → realm → account layering, persisted in the plugin state file
-  `workbuddy-state.json`, atomic writes). Reset to defaults per realm.
+- Save settings for all accounts of one realm (defaults → realm), persisted
+  in `workbuddy-state.json` with atomic writes. Per-account overrides are
+  retired; existing `authOverride` entries are removed during migration.
+- Save/Reset reload the host model registry without restarting CPA and report
+  the reload outcome. Refetch preserves dirty drafts in both realms;
+  Save/Reset clears only its realm, unless you edited it during the request.
+  Closing discards unsaved edits. Stale fetch responses cannot replace newer
+  snapshots or discard a draft opened while Save was pending.
+- Prefix ON displays `cb/` or `cn/` for an empty saved value; custom prefixes
+  retain their typed value. Provider group headings remain readable in dark mode.
 - Removed the legacy `models` config field (declared since 0.9.2 but never
   read — the Model Manager replaces it).
 
@@ -37,7 +44,21 @@
 - The panel shows an update badge (fixed top-left) when the GitHub release
   registry publishes a newer version than the running plugin
   (`releases/latest/download/registry.json`, 6-hour cache, silent fail,
-  per-version skip). Update points to the release page.
+  per-version skip). The panel displays Current/Upstream versions and a manual
+  Check now button. Skip markers use the same state path, lock, and atomic
+  writer as Model Manager; older markers migrate on read.
+
+### Exhausted-account failover
+
+- Explicit credit rejection (HTTP 402, code 14018, or credit-exhaustion text
+  with HTTP >=400) before the first chunk retries the same body and CID on
+  another enabled account in the same realm.
+- Quarantine rejected accounts for the upstream reset interval, or 30 minutes
+  without a usable reset. This process-local backoff does not disable/delete
+  auth files and works with `lifecycle_auto:false`. Restart clears quarantine.
+- Attribute terminal usage to the last attempted account in non-stream,
+  synchronous stream, and asynchronous stream paths. Preserve the no-replay
+  guards for partial output, empty HTTP 200 streams, and transport errors.
 
 ## 0.9.6
 

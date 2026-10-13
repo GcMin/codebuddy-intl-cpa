@@ -1,5 +1,5 @@
-// failover.go implements multi-account failover for upstream rate limits
-// (HTTP 429 / CodeBuddy code 6004 "usage exceeds frequency limit").
+// failover.go implements non-destructive multi-account cooldowns for upstream
+// rate limits and explicit account-credit exhaustion before any stream chunk.
 //
 // The CPA host's built-in cooldown+retry only applies to in-host executors;
 // c-shared plugins execute upstream requests themselves, so a 429 never
@@ -19,7 +19,7 @@ import (
 // authCooldown is the per-account rate-limit cooldown state.
 type authCooldown struct {
 	NextRetryAt time.Time // account may be tried again after this instant
-	Reason      string    // "429" (or "" when not on cooldown)
+	Reason      string    // "429" or "credits_exhausted"
 }
 
 var (
@@ -34,6 +34,10 @@ const defaultCooldownDuration = 30 * time.Minute
 // markAuthCooldown records that the account reached a rate limit and must not
 // be retried until resetAt (zero/past → default 30m cooldown).
 func markAuthCooldown(authID string, resetAt time.Time) {
+	markAuthCooldownReason(authID, resetAt, "429")
+}
+
+func markAuthCooldownReason(authID string, resetAt time.Time, reason string) {
 	authID = strings.TrimSpace(authID)
 	if authID == "" {
 		return
@@ -42,7 +46,7 @@ func markAuthCooldown(authID string, resetAt time.Time) {
 		resetAt = time.Now().Add(defaultCooldownDuration)
 	}
 	cooldownMu.Lock()
-	cooldowns[authID] = authCooldown{NextRetryAt: resetAt, Reason: "429"}
+	cooldowns[authID] = authCooldown{NextRetryAt: resetAt, Reason: reason}
 	cooldownMu.Unlock()
 }
 
@@ -109,6 +113,15 @@ func parseRateLimitResetAt(body string) time.Time {
 		return time.Time{}
 	}
 	return t
+}
+
+// Explicit upstream credit rejection is an account problem, unlike an empty
+// HTTP 200 stream (possibly billed) or a transport error. Retry only when a
+// non-success HTTP status is known. Code 14018 also works without English text.
+var exhaustedCodeRe = regexp.MustCompile(`"code"\s*:\s*14018\b`)
+
+func isAccountExhaustedResponse(statusCode int, body string) bool {
+	return statusCode >= 400 && (isHardCreditError(statusCode, body) || exhaustedCodeRe.MatchString(body))
 }
 
 // isRateLimitResponse reports whether an upstream chat response is a soft rate

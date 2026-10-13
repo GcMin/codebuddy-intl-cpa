@@ -1801,6 +1801,9 @@ const MM = {
   cfg: { global: null, cn: null },   // snapshot terakhir dari GET /models/config
   state: { global: null, cn: null }, // state yang diedit user
   dirty: { global: false, cn: false },
+  editRevision: { global: 0, cn: 0 },
+  configRequestID: 0,
+  pendingReset: {},
   search: { global: "", cn: "" },
   tab: { global: "models", cn: "models" },
   skipVersion: (()=>{ try{return localStorage.getItem("workbuddy-update-skip")||""}catch(e){return ""} })(),
@@ -1815,7 +1818,15 @@ function mmFail(realm, err){
   if(el) el.innerHTML='<span style="color:var(--err)">'+esc(err)+'</span>';
 }
 
-async function mmGetConfig(){
+function mmRevision(realm){ return (MM.editRevision&&MM.editRevision[realm])||0; }
+function mmBumpRevision(realm){
+  MM.editRevision=MM.editRevision||{};
+  MM.editRevision[realm]=mmRevision(realm)+1;
+}
+async function mmGetConfig(resetRealm, resetRevision){
+  MM.pendingReset=MM.pendingReset||{};
+  if(resetRealm)MM.pendingReset[resetRealm]=resetRevision;
+  const requestID=MM.configRequestID=(MM.configRequestID||0)+1;
   // keep the chosen fetch account sticky: GET must carry it, otherwise the
   // backend falls back to accounts[0] and the picker snaps back to the first
   // account (bug: picking any account returned to the first one).
@@ -1825,12 +1836,18 @@ async function mmGetConfig(){
     if(a) q.push("fetch_account_"+r+"="+encodeURIComponent(a));
   }
   const d = await api("/models/config"+(q.length?("?"+q.join("&")):""));
+  if(requestID!==MM.configRequestID)return; // ignore out-of-order responses
   if(d && d.error) throw new Error(d.error);
-  MM.cfg.global = (d && d.realms && d.realms.global) || null;
-  MM.cfg.cn = (d && d.realms && d.realms.cn) || null;
-  if(!MM.cfg.global && !MM.cfg.cn) throw new Error("GET /models/config: no realms payload");
+  const realms=(d&&d.realms)||{};
+  if(!realms.global && !realms.cn) throw new Error("GET /models/config: no realms payload");
   for(const r of ["global","cn"]){
-    if(MM.cfg[r]) MM.state[r] = mmStateFromCfg(r, MM.cfg[r]);
+    MM.cfg[r]=realms[r]||null; // saved snapshot/catalog, never the dirty draft
+    const reset=MM.pendingReset[r]!==undefined && mmRevision(r)===MM.pendingReset[r];
+    delete MM.pendingReset[r];
+    if(MM.cfg[r] && (!MM.state[r] || !MM.dirty[r] || reset)){
+      MM.state[r]=mmStateFromCfg(r,MM.cfg[r]);
+      if(reset)mmClearDirty(r);
+    }
   }
   MM.loaded = true;
   mmRenderAll();
@@ -2190,6 +2207,7 @@ function mmRenderAdvancedPreviews(realm){
 
 /* ---------- dirty / reset / yaml / save ---------- */
 function mmMarkDirty(realm){
+  mmBumpRevision(realm);
   MM.dirty[realm]=true;
   const el=document.getElementById(realm==="global"?"mm-dirty-g":"mm-dirty-c");
   if(el)el.textContent=tr("● 未保存更改");
@@ -2201,11 +2219,11 @@ function mmClearDirty(realm){
   setTimeout(()=>{const e2=document.getElementById(realm==="global"?"mm-dirty-g":"mm-dirty-c");if(e2&&e2.textContent===tr("已保存 ✓"))e2.textContent="";},2500);
 }
 async function mmReset(realm){
+  const revision=mmRevision(realm);
   try{
     const d=await api("/models/config?reset=1&realm="+encodeURIComponent(realm));
     if(d&&d.error)throw new Error(d.error);
-    await mmGetConfig();
-    mmClearDirty(realm);
+    await mmGetConfig(realm,revision);
     mmReloadToast(d,(realm==="global"?tr("Global"):tr("CN"))+tr(" 已恢复默认"));
   }catch(e){ mmToast(tr("重置失败"),"err",e.message||String(e)); }
 }
@@ -2243,6 +2261,7 @@ function mmCopyYAML(realm){
   else mmToast(tr("YAML 已显示 — 手动复制"));
 }
 async function mmSave(realm){
+  const revision=mmRevision(realm);
   const st=MM.state[realm];
   const c=MM.cfg[realm]||{};
   const body={
@@ -2266,8 +2285,7 @@ async function mmSave(realm){
   try{
     const d=await api("/models/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     if(d&&d.error)throw new Error(d.error);
-    await mmGetConfig();
-    mmClearDirty(realm);
+    await mmGetConfig(realm,revision);
     const detail=tr("已保存（全部 ")+(g?tr("国际"):tr("国内"))+tr(" 账号）");
     mmReloadToast(d,detail);
   }catch(e){ mmToast(tr("保存失败"),"err",e.message||String(e)); }
@@ -2292,6 +2310,7 @@ function mmOpen(realm){
   }
 }
 function mmClose(realm){
+  mmBumpRevision(realm); // pending Save/Reset cannot discard a reopened draft
   const ov=document.getElementById("mm-ov-"+realm);
   ov.classList.remove("open");
   // The editable draft is not saved state. Closing by X/backdrop/Escape must

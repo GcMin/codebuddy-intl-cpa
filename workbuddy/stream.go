@@ -99,10 +99,12 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, collector.detail(), false, 0, "")
 		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), false)
 		onFailoverSuccess(req.AuthID, fin.AuthID, candRecordID(answered, fin.AuthID), authUID)
-	case outcomeRateLimited:
-		// Every eligible account hit a rate limit before any chunk was sent.
-		publishUsage(req.Model, upstreamModel, req.AuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, req.AuthID, authUID, started, collector.lastMap(), true)
+	case outcomeRateLimited, outcomeAccountExhausted:
+		// Every eligible account was rejected before a chunk. Do not invoke
+		// destructive lifecycle; the retry loop already quarantined accounts.
+		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
+		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
 		streamEmitError(streamID, fmt.Sprintf("upstream %d: %s", fin.Status, truncateRedacted(fin.Body, 200)))
 	default: // outcomeStop
 		if fin.Emitted {
@@ -122,11 +124,11 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 			}
 			return
 		}
-		usageAuthID := firstNonEmpty(fin.AuthID, req.AuthID)
+		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
 		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, usageAuthID, authUID, started, collector.lastMap(), true)
-		if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
-			go reconcileByUID(authUID, fin.Status, fin.Body)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+		if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) && !isAccountExhaustedResponse(fin.Status, fin.Body) {
+			go reconcileByUID(usageUID, fin.Status, fin.Body)
 		}
 		streamEmitError(streamID, failoverErrorMessage(fin.Status, fin.Body, fin.Err))
 	}
@@ -144,6 +146,9 @@ func failoverErrorMessage(status int, body string, err error) string {
 	}
 	return "workbuddy stream request failed"
 }
+
+// Test seam for the host stream sink; production retains the real callback.
+var streamEmitSource = streamEmit
 
 // pumpAttempt runs one upstream SSE pump against one account. Returns
 // (emitted, statusCode, err): emitted reports whether any chunk reached the
@@ -177,7 +182,7 @@ func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, request
 		if sseFramed {
 			cleaned = "data: " + cleaned
 		}
-		if err := streamEmit(streamID, []byte(cleaned)); err != nil {
+		if err := streamEmitSource(streamID, []byte(cleaned)); err != nil {
 			// Client disconnected / host closed stream — abort.
 			return emitted, 0, fmt.Errorf("stream_emit: %w", err)
 		}

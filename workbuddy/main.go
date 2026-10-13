@@ -815,14 +815,13 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 		onFailoverSuccess(req.AuthID, fin.AuthID, candRecordID(answered, fin.AuthID), authUID)
 		return okEnvelope(pluginapi.ExecutorResponse{Payload: completion})
 	default:
-		// outcomeStop (transport/business) keeps the legacy reconcile path for
-		// hard errors; pure rate-limit exhaustion records one failed line and
-		// returns the last upstream error. Failures keep the routed account's
-		// identity in usage (matches pre-failover behavior).
-		publishUsage(req.Model, upstreamModel, req.AuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-		recordUsageMap(req.Model, upstreamModel, req.AuthID, authUID, started, nil, true)
-		if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
-			reconcileAfterExecutorError(req.AuthID, fin.Status, fin.Body)
+		usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
+		publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
+		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, nil, true)
+		// Exhaustion is handled non-destructively by the retry loop, not by
+		// lifecycle's Global delete policy.
+		if fin.Outcome == outcomeStop && fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
+			reconcileByUID(usageUID, fin.Status, fin.Body)
 		}
 		if fin.Err == nil {
 			fin.Err = fmt.Errorf("workbuddy request failed")
@@ -892,6 +891,9 @@ func handleExecStream(raw []byte) ([]byte, error) {
 				if statusCode == 0 {
 					return outcomeStop, 0, "", err
 				}
+				if isAccountExhaustedResponse(statusCode, err.Error()) {
+					return outcomeAccountExhausted, statusCode, err.Error(), err
+				}
 				if isRateLimitResponse(statusCode, err.Error()) {
 					return outcomeRateLimited, statusCode, err.Error(), err
 				}
@@ -919,10 +921,11 @@ func handleExecStream(raw []byte) ([]byte, error) {
 				recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
 				return okEnvelope(streamResponse{Headers: headers, Chunks: chunks})
 			}
-			publishUsage(req.Model, upstreamModel, req.AuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
-			recordUsageMap(req.Model, upstreamModel, req.AuthID, authUID, started, collector.lastMap(), true)
-			if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
-				reconcileAfterExecutorError(req.AuthID, fin.Status, fin.Body)
+			usageAuthID, usageUID := failureIdentity(cands, fin, req.AuthID, authUID)
+			publishUsage(req.Model, upstreamModel, usageAuthID, started, usage.Detail{}, true, fin.Status, fin.Body)
+			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true)
+			if fin.Outcome == outcomeStop && fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) {
+				reconcileByUID(usageUID, fin.Status, fin.Body)
 			}
 			if fin.Err == nil {
 				fin.Err = fmt.Errorf("workbuddy stream request failed")

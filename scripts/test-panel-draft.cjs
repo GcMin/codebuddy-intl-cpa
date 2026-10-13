@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const html = fs.readFileSync(path.join(__dirname, '../workbuddy/panel.html'), 'utf8');
+const revisionCode = html.slice(html.indexOf('function mmRevision('), html.indexOf('async function mmGetConfig('));
 const stateCode = html.slice(html.indexOf('function mmStateFromCfg('), html.indexOf('function mmRenderAll('));
 const modalCode = html.slice(html.indexOf('function mmOpen('), html.indexOf('function mmTab('));
 function panel() {
@@ -26,7 +27,7 @@ function panel() {
     mmGetConfig: () => { throw new Error('unexpected network fetch'); }
   };
   for (const name of ['mmRenderPrefixUI', 'mmRenderFallbackUI', 'mmRenderModels', 'mmRenderPreview', 'mmRenderAdvancedPreviews']) ctx[name] = r => renders.push([name, r]);
-  vm.createContext(ctx); vm.runInContext(stateCode + modalCode, ctx);
+  vm.createContext(ctx); vm.runInContext(revisionCode + stateCode + modalCode, ctx);
   for (const realm of ['global', 'cn']) {
     ctx.MM.cfg[realm] = { prefix: { enabled: true, value: '', def: ctx.MM_DEFAULT_PFX[realm] }, disabled: ['old-model'], custom: [{ id: 'saved-custom', name: 'Saved', ctx: '200000' }], fallback: { enabled: true, model: 'fast-model' }, retry_fallback: { enabled: false, model: '' } };
     ctx.MM.state[realm] = ctx.mmStateFromCfg(realm, ctx.MM.cfg[realm]);

@@ -86,7 +86,7 @@ on a different host (`copilot.tencent.com`).
 **Bonus:** consecutive days also unlock streak tiers (`14d` → +50 credits,
 `28d` → +150 credits) on top of the daily amount.
 
-### 2. In-plugin 429 failover
+### 2. In-plugin account failover
 
 CPA's built-in cooldown and retry only apply to in-host executors. A `c-shared` plugin
 performs its own upstream requests, so a `429` / `code 6004` never reaches the host
@@ -94,6 +94,15 @@ selector and no failover happens — the request just fails.
 
 This plugin keeps a per-account cooldown map and retries the **same request** on another
 enabled account before returning an error (`failover.go`, `retry.go`).
+
+The dev branch also handles explicit credit exhaustion (HTTP 402, code 14018,
+`Credits exhausted`) before any output chunk. It retries in the same realm and
+quarantines the rejected account until the reported reset, or for 30 minutes.
+The quarantine is process-local and clears on restart. It works with
+`lifecycle_auto:false` and does not disable or delete auth files. Partial output,
+empty HTTP 200 streams, and transport errors stop the request without replay.
+Failover can incur a prompt-cache miss on the replacement account; cache sharing
+varies by model/backend.
 
 ### 3. Per-request usage and credit log
 
@@ -130,7 +139,19 @@ Realm detection accepts both issuers (`workbuddy.ai` **and** `codebuddy.ai`), so
 credentials route to the correct billing and chat hosts instead of being sent to the CN
 gateway (which answers a non-JSON 401 and surfaces as `parse failed: invalid character '<'`).
 
-### 7. Inherited from the original plugin
+### 7. Model Manager (dev branch, not yet released)
+
+Open **Global Models** or **CN Models** in the panel to edit the realm catalog,
+prefix, custom models, and optional fallbacks. Save applies to all accounts in
+that realm; per-account overrides are retired. Save/Reset reports whether CPA
+reloaded `/v1/models` without a restart. Re-fetch updates the catalog while
+preserving unsaved drafts; closing the popup discards those drafts.
+
+The **Test** button sends a paid upstream chat request. Re-fetch uses catalog
+GETs without chat credits. The update widget displays the running and latest
+release versions; skipped releases persist beside Model Manager state.
+
+### 8. Inherited from the original plugin
 
 Multi-account OAuth login, dynamic model list, chat executor, CN daily check-in, Global
 one-time 250-credit expert trial, credit lifecycle (disable CN / delete Global when

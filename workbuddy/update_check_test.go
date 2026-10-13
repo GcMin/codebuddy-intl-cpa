@@ -171,17 +171,20 @@ func TestSeenVersionPersistence(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("WORKBUDDY_DATA_DIR", dir)
 
-	// No state file yet → fallback file (workbuddy-update.json).
+	// First write uses canonical shared state, even before a Model Manager save.
 	updateWriteSeenVersion("0.9.7")
 	if got := updateReadSeenVersion(); got != "0.9.7" {
 		t.Fatalf("fallback read: got %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, updateFallbackFileName)); err != nil {
-		t.Fatalf("fallback file missing: %v", err)
+	if _, err := os.Stat(wbStatePath()); err != nil {
+		t.Fatalf("canonical state missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, updateFallbackFileName)); !os.IsNotExist(err) {
+		t.Fatalf("must not create an independent fallback writer: %v", err)
 	}
 
 	// W1a state file present → key update.seenVersion inside it, fallback untouched.
-	statePath := filepath.Join(dir, updateStateFileName)
+	statePath := wbStatePath()
 	state := map[string]any{
 		"realm": map[string]any{"global": map[string]any{"disabled": []string{"m1"}}},
 	}
@@ -219,6 +222,7 @@ func TestSeenVersionPersistence(t *testing.T) {
 }
 
 func TestHandleUpdateCheckQueryContract(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
 	// 0.9.8: must always be newer than the built version (0.9.7+) so this test
 	// does not flip when the release tag catches up with the mock.
 	serveRegistry(t, http.StatusOK, registryJSON("0.9.8"))

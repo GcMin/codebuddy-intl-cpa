@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -205,7 +206,7 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) (*failoverPool, []byte, error) {
 	realm := mmPrefixRealm(model)
 	if realm == "" {
-		return buildFailoverPool(routedAuthID), routedStorage, nil
+		return buildFailoverPool(routedAuthID, routedStorage), routedStorage, nil
 	}
 	return buildRealmFailoverPool(model, routedAuthID, routedStorage, realm)
 }
@@ -236,8 +237,9 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 	}
 	files, err := loadAuthList()
 	if err != nil {
-		if authInRealm(routedAuth, realm) {
-			return &failoverPool{Primary: &failoverCandidate{AuthID: routedAuthID, Auth: routedAuth}}, routedStorage, nil
+		cand := &failoverCandidate{AuthID: routedAuthID, RecordID: routedAuthID, Auth: routedAuth}
+		if authInRealm(routedAuth, realm) && !candidateOnCooldown(cand) {
+			return &failoverPool{Primary: cand}, routedStorage, nil
 		}
 		return nil, nil, fmt.Errorf("cannot find a %s CodeBuddy account for model %q: %w", realmLabel(realm), model, err)
 	}
@@ -255,10 +257,11 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 		if getErr != nil || !authInRealm(sa, realm) {
 			continue
 		}
-		candidates = append(candidates, eligible{
-			file: f,
-			cand: &failoverCandidate{AuthID: f.AuthIndex, Auth: sa},
-		})
+		cand := &failoverCandidate{AuthID: f.AuthIndex, RecordID: f.ID, Aliases: []string{f.Name}, Auth: sa}
+		if candidateOnCooldown(cand) {
+			continue
+		}
+		candidates = append(candidates, eligible{file: f, cand: cand})
 	}
 	if len(candidates) == 0 {
 		return nil, nil, fmt.Errorf("no enabled %s CodeBuddy account is available for model %q", realmLabel(realm), model)
@@ -394,9 +397,10 @@ func isEmptyStreamError(err error) bool {
 type attemptOutcome int
 
 const (
-	outcomeSuccess     attemptOutcome = iota // usable result
-	outcomeRateLimited                       // soft 429 — try next account
-	outcomeStop                              // transport/business error — do NOT retry
+	outcomeSuccess          attemptOutcome = iota // usable result
+	outcomeRateLimited                            // soft 429 — try next account
+	outcomeAccountExhausted                       // explicit credit rejection — skip + try next
+	outcomeStop                                   // transport/business error — do NOT retry
 )
 
 // failoverResult is the loop verdict.
@@ -415,12 +419,12 @@ type failoverResult struct {
 type failoverAttemptFn func(cand *failoverCandidate) (attemptOutcome, int, string, error)
 
 // runFailover executes attemptFn across eligible accounts: the routed account
-// first, then each fallback. A rate-limited account is marked for cooldown
-// and the next candidate is tried; any other failure stops the loop.
+// first, then each fallback. Throttled/exhausted accounts are temporarily
+// skipped (no auth mutation); ambiguous or request-wide failures stop the loop.
 func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	for _, cand := range cands {
-		if cand == nil || cand.Auth == nil || cand.AuthID == "" {
+		if cand == nil || cand.Auth == nil || cand.AuthID == "" || candidateOnCooldown(cand) {
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
@@ -429,20 +433,16 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn) failov
 		case outcomeSuccess:
 			resetCandidateCooldown(cand)
 			return failoverResult{Outcome: outcomeSuccess, AuthID: cand.AuthID, Tried: res.Tried}
-		case outcomeRateLimited:
-			markCandidateCooldown(cand, parseRateLimitResetAt(body))
+		case outcomeRateLimited, outcomeAccountExhausted:
+			markCandidateUnavailable(cand, outcome, body)
+			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, body, err
 		default: // outcomeStop
 			return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 				Status: status, Body: body, Err: err}
 		}
 	}
-	// Every eligible account was rate-limited (or none were usable).
-	res.Outcome = outcomeRateLimited
-	if res.Err == nil {
-		res.Err = &upstreamStatusError{status: 429, body: "all eligible workbuddy accounts are rate-limited"}
-	}
-	return res
+	return unavailableFailoverResult(res)
 }
 
 // classifyNonStream classifies a folded (non-stream) attempt result.
@@ -453,6 +453,9 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 	status, body := upstreamStatusOf(err)
 	if status == 0 {
 		return outcomeStop, 0, "", err // transport error — account-independent
+	}
+	if isAccountExhaustedResponse(status, body) {
+		return outcomeAccountExhausted, status, body, err
 	}
 	if isRateLimitResponse(status, body) {
 		return outcomeRateLimited, status, body, err
@@ -466,7 +469,7 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCandidate) (emitted bool, status int, err error)) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	for _, cand := range cands {
-		if cand == nil || cand.Auth == nil || cand.AuthID == "" {
+		if cand == nil || cand.Auth == nil || cand.AuthID == "" || candidateOnCooldown(cand) {
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
@@ -480,23 +483,60 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 			return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 				Emitted: true, Status: status, Body: err.Error(), Err: err}
 		}
-		if isRateLimitResponse(status, err.Error()) {
-			markCandidateCooldown(cand, parseRateLimitResetAt(err.Error()))
+		outcome := outcomeStop
+		if isAccountExhaustedResponse(status, err.Error()) {
+			outcome = outcomeAccountExhausted
+		} else if isRateLimitResponse(status, err.Error()) {
+			outcome = outcomeRateLimited
+		}
+		if outcome != outcomeStop {
+			markCandidateUnavailable(cand, outcome, err.Error())
+			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, err.Error(), err
 			continue
 		}
 		return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 			Status: status, Body: err.Error(), Err: err}
 	}
-	res.Outcome = outcomeRateLimited
+	return unavailableFailoverResult(res)
+}
+
+func unavailableFailoverResult(res failoverResult) failoverResult {
 	if res.Err == nil {
-		res.Err = &upstreamStatusError{status: 429, body: "all eligible workbuddy accounts are rate-limited"}
+		res.Outcome = outcomeRateLimited
+		res.Status, res.Body = 429, "all eligible workbuddy accounts are temporarily unavailable"
+		res.Err = &upstreamStatusError{status: res.Status, body: res.Body}
 	}
 	return res
 }
 
-// candUID returns the account's UID for usage records; falls back to the
-// routed account's UID when the candidate carries no parsed auth.
+// Credit rejection uses the existing 30-minute backoff when no reset is
+// provided. This is process-local, independent of lifecycle_auto, and never
+// disables/deletes an auth file; replenished accounts can be retried later.
+func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body string) {
+	reason := "429"
+	if outcome == outcomeAccountExhausted {
+		reason = "credits_exhausted"
+	}
+	resetAt := parseRateLimitResetAt(body)
+	if resetAt.IsZero() || !resetAt.After(time.Now()) {
+		resetAt = time.Now().Add(defaultCooldownDuration)
+	}
+	for _, key := range candidateCooldownIDs(c) {
+		markAuthCooldownReason(key, resetAt, reason)
+	}
+	if c != nil {
+		fmt.Fprintf(os.Stderr, "[workbuddy] failover: skip auth=%q reason=%s until=%s\n", redactSecrets(c.AuthID), reason, resetAt.UTC().Format(time.RFC3339))
+	}
+}
+
+// failureIdentity maps terminal accounting and reconciliation to the last
+// attempted candidate, not the account originally chosen by the host.
+func failureIdentity(cands []*failoverCandidate, fin failoverResult, routedID, routedUID string) (string, string) {
+	id := firstNonEmpty(fin.AuthID, routedID)
+	return id, candUID(findCandidate(cands, id), routedUID)
+}
+
 func markCandidateCooldown(c *failoverCandidate, resetAt time.Time) {
 	for _, key := range candidateCooldownIDs(c) {
 		markAuthCooldown(key, resetAt)

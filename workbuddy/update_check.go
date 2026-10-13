@@ -12,8 +12,8 @@
 //     current filled in. The update check must never surface an error to the
 //     panel or block any other feature.
 //   - Cache 6h + on-demand force refresh (refresh=1).
-//   - seenVersion persistence ("Skip this version" button) via the W1a state
-//     file; standalone fallback file until W1a merges.
+//   - seenVersion persistence ("Skip this version") via the shared state API;
+//     legacy standalone markers are migrated on first read.
 package main
 
 import (
@@ -39,12 +39,9 @@ import (
 var updateRegistryURL = "https://github.com/zidanefaqih/codebuddy-intl-cpa/releases/latest/download/registry.json"
 
 const (
-	updateCacheTTL      = 6 * time.Hour
-	updateFetchTimeout  = 10 * time.Second
-	updateStateFileName = "workbuddy-state.json" // W1a contract; fallback below
-	// updateFallbackFileName is used only while W1a's state layer is not
-	// merged. Lead consolidates into workbuddy-state.json at merge time.
-	updateFallbackFileName = "workbuddy-update.json"
+	updateCacheTTL         = 6 * time.Hour
+	updateFetchTimeout     = 10 * time.Second
+	updateFallbackFileName = "workbuddy-update.json" // legacy migration only
 )
 
 // updateRegistry mirrors the subset of registry.json schema v2 we need.
@@ -159,9 +156,11 @@ func (u *updateChecker) check(force bool, current string) updateCheckResponse {
 // setSeenVersion records "Skip this version" and persists it. Errors are
 // swallowed (silent-fail family): skipping must not break the check itself.
 func (u *updateChecker) setSeenVersion(v string) {
-	u.seenVal = v
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.seenVal = strings.TrimSpace(v)
 	u.seenLoaded = true
-	updateWriteSeenVersion(v)
+	updateWriteSeenVersion(u.seenVal)
 }
 
 // seenVal lazily loads the persisted seenVersion (state file or fallback).
@@ -222,11 +221,9 @@ func fetchUpdateRegistry() (string, string, string, error) {
 // seenVersion persistence
 // -----------------------------------------------------------------------------
 //
-// Preferred: the `update` key inside W1a's workbuddy-state.json (contract:
-// {…, update:{seenVersion}}). W1a may not be merged yet, so when the state
-// file is absent/empty we use a tiny standalone file (workbuddy-update.json)
-// next to it; lead consolidates at merge time. Reads prefer the key in
-// workbuddy-state.json when present, falling back to the standalone file.
+// Use the same data dir, mutex and atomic writer as Model Manager. Old builds
+// wrote to the auth-dir root (instead of .codebuddy_data); migrate that marker
+// and legacy standalone files only when canonical state has no seenVersion.
 
 type updateSeenFile struct {
 	SeenVersion string `json:"seenVersion"`
@@ -256,62 +253,48 @@ func updateStateDir() string {
 	return os.TempDir()
 }
 
-// updateWriteSeenVersion writes seenVersion into the W1a state file when it
-// already exists (preserving its other keys), else into the fallback file.
 func updateWriteSeenVersion(v string) {
-	dir := updateStateDir()
-	if dir == "" {
-		return
-	}
-	statePath := filepath.Join(dir, updateStateFileName)
-	if raw, err := os.ReadFile(statePath); err == nil {
-		var state map[string]any
-		if json.Unmarshal(raw, &state) == nil && state != nil {
-			state["update"] = map[string]any{"seenVersion": v}
-			if out, err := json.MarshalIndent(state, "", "  "); err == nil {
-				tmp := statePath + ".tmp"
-				if os.WriteFile(tmp, out, 0o644) == nil {
-					_ = os.Rename(tmp, statePath) // atomic-ish swap
-					return
-				}
-			}
-		}
-	}
-	fbPath := filepath.Join(dir, updateFallbackFileName)
-	out, err := json.MarshalIndent(updateSeenFile{SeenVersion: v}, "", "  ")
-	if err != nil {
-		return
-	}
-	tmp := fbPath + ".tmp"
-	if os.WriteFile(tmp, out, 0o644) == nil {
-		_ = os.Rename(tmp, fbPath)
-	}
+	_ = saveUpdateSeenVersion(v) // silent fail; never use an independent writer
 }
 
-// updateReadSeenVersion prefers the key inside workbuddy-state.json (W1a
-// contract) and falls back to the standalone file.
 func updateReadSeenVersion() string {
-	dir := updateStateDir()
-	if dir == "" {
-		return ""
+	if v := loadUpdateState().SeenVersion; v != "" {
+		return v
 	}
-	if raw, err := os.ReadFile(filepath.Join(dir, updateStateFileName)); err == nil {
-		var state struct {
-			Update updateSeenFile `json:"update"`
+	for _, dir := range []string{wbDataDir(), updateStateDir()} {
+		for _, name := range []string{mmStateFileName, updateFallbackFileName} {
+			path := filepath.Join(dir, name)
+			if path == wbStatePath() {
+				continue
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			var f struct {
+				Update      updateSeenFile `json:"update"`
+				SeenVersion string         `json:"seenVersion"`
+			}
+			if json.Unmarshal(raw, &f) != nil {
+				continue
+			}
+			v := strings.TrimSpace(firstNonEmpty(f.Update.SeenVersion, f.SeenVersion))
+			if v == "" {
+				continue
+			}
+			// A concurrent canonical writer wins over a migrated legacy value.
+			if err := mutateState(func(st *wbStateFile) error {
+				if st.Update.SeenVersion == "" {
+					st.Update.SeenVersion = v
+				}
+				return nil
+			}); err == nil {
+				return loadUpdateState().SeenVersion
+			}
+			return v
 		}
-		if json.Unmarshal(raw, &state) == nil && state.Update.SeenVersion != "" {
-			return state.Update.SeenVersion
-		}
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, updateFallbackFileName))
-	if err != nil {
-		return ""
-	}
-	var f updateSeenFile
-	if json.Unmarshal(raw, &f) != nil {
-		return ""
-	}
-	return f.SeenVersion
+	return ""
 }
 
 // -----------------------------------------------------------------------------
