@@ -20,6 +20,7 @@ import (
 type authCooldown struct {
 	NextRetryAt time.Time // account may be tried again after this instant
 	Reason      string    // "429" or "credits_exhausted"
+	ProbeAt     time.Time // soft 429 may be probed before the full reset
 }
 
 var (
@@ -31,13 +32,10 @@ var (
 // soft rate limits when the upstream reset time cannot be parsed.
 const defaultCooldownDuration = 30 * time.Minute
 
-// maxRateLimitCooldown caps a soft rate-limit (429 / code 6004) cooldown. A
-// burst of parallel requests can 429 every account of a realm within seconds
-// (observed 2026-10-13: 16 accounts cooled at once, then every cb/* request
-// failed for 30 minutes). Capping keeps the outage short: an early retry costs
-// one upstream round-trip, never credit. Credit exhaustion keeps the full
-// backoff because that account really is unusable until it is replenished.
+// Soft rate limits retain a bounded reset window. A realm with no ready
+// account may probe after a short backoff; credit exhaustion is never probed.
 const maxRateLimitCooldown = 10 * time.Minute
+const rateLimitProbeInterval = 30 * time.Second
 
 // markAuthCooldown records that the account reached a rate limit and must not
 // be retried until resetAt (zero/past → default 30m cooldown).
@@ -53,8 +51,19 @@ func markAuthCooldownReason(authID string, resetAt time.Time, reason string) {
 	if resetAt.IsZero() || !resetAt.After(time.Now()) {
 		resetAt = time.Now().Add(defaultCooldownDuration)
 	}
+	now := time.Now()
+	probeAt := now.Add(rateLimitProbeInterval)
+	if resetAt.Before(probeAt) {
+		probeAt = resetAt
+	}
 	cooldownMu.Lock()
-	cooldowns[authID] = authCooldown{NextRetryAt: resetAt, Reason: reason}
+	// A late rate-limit response must not shorten/overwrite credit exhaustion.
+	old := cooldowns[authID]
+	if old.Reason == "credits_exhausted" && old.NextRetryAt.After(now) && reason != "credits_exhausted" {
+		cooldownMu.Unlock()
+		return
+	}
+	cooldowns[authID] = authCooldown{NextRetryAt: resetAt, Reason: reason, ProbeAt: probeAt}
 	cooldownMu.Unlock()
 }
 

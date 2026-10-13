@@ -65,6 +65,9 @@ func TestCacheFingerprintSchemaOptionsAndCID(t *testing.T) {
 	if c.OptionsHash == b.OptionsHash || c.ToolsHash != b.ToolsHash {
 		t.Fatal("options change attribution failed")
 	}
+	if c.OptionHashes["temperature"] == "" || c.OptionHashes["temperature"] != traceHash([]byte("0.5")) || c.OptionHashes["model"] != b.OptionHashes["model"] {
+		t.Fatal("per-option attribution failed")
+	}
 	spaced := bytes.ReplaceAll(body, []byte(`,"`), []byte(`, "`))
 	if got := fingerprintCacheBody(spaced); got.BodyHash == a.BodyHash {
 		t.Fatal("exact body serialization not observed")
@@ -74,13 +77,18 @@ func TestCacheFingerprintSchemaOptionsAndCID(t *testing.T) {
 func TestCacheTraceDoesNotStorePromptOrCredentials(t *testing.T) {
 	secret := "Bearer private-key-material-test"
 	body := traceBody(secret, secret, "private-history-text")
+	var options map[string]any
+	_ = json.Unmarshal(body, &options)
+	options["private-key-material-test"] = secret // arbitrary option names must not be logged
+	options["response_format"] = map[string]any{"private": secret}
+	body, _ = json.Marshal(options)
 	tr := newRequestCacheTrace(body, nil, body, map[string]any{"request_id": secret}, time.Now())
 	req, _ := http.NewRequest(http.MethodPost, "https://example.invalid", bytes.NewReader(body))
 	backendHeaders(req, &storedAuth{Auth: storedTokens{AccessToken: secret}, Account: storedAccount{UID: secret}})
 	idx := tr.beginAttempt(req, secret)
 	tr.finishAttempt(idx, 200)
 	raw, _ := json.Marshal(tr)
-	for _, bad := range []string{secret, "private-history-text", "fake-secret-tool", "Authorization", "parameters"} {
+	for _, bad := range []string{secret, "private-key-material-test", "private-history-text", "fake-secret-tool", "Authorization", "parameters"} {
 		if bytes.Contains(raw, []byte(bad)) {
 			t.Fatalf("trace leaked %s", bad)
 		}

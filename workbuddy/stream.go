@@ -94,7 +94,7 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 		backendHeaders(httpReq, cand.Auth)
 		trace.beginAttempt(httpReq, cand.AuthID)
 		return pumpAttempt(httpReq, streamID, sseFramed, req.Model, upstreamModel, cand.AuthID, candUID(cand, authUID), started, collector, trace)
-	})
+	}, ctx)
 
 	switch fin.Outcome {
 	case outcomeSuccess:

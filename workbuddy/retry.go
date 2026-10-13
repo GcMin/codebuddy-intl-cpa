@@ -31,6 +31,11 @@ type failoverCandidate struct {
 	// Aliases are other host-list identities, such as the physical filename.
 	Aliases []string
 	Auth    *storedAuth
+	// RateModel scopes soft rate limits to the actual upstream model. Credit
+	// exhaustion remains account-wide. RecoveryProbe is only set by the pool
+	// when every eligible account is cooling; admission still enforces backoff.
+	RateModel     string
+	RecoveryProbe bool
 }
 
 // failoverPool is a single-request snapshot of the eligible accounts.
@@ -95,7 +100,12 @@ func isCNAuth(sa *storedAuth) bool {
 // primaryStorage is optional and preserves the routed realm when the host
 // cannot resolve the routed record temporarily.
 func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverPool {
+	return buildBareFailoverPool(routedAuthID, "", primaryStorage...)
+}
+
+func buildBareFailoverPool(routedAuthID, model string, primaryStorage ...[]byte) *failoverPool {
 	pool := &failoverPool{}
+	var cooling []*failoverCandidate
 	files, err := loadAuthList()
 	if err != nil {
 		primary := &failoverCandidate{AuthID: routedAuthID, RecordID: routedAuthID}
@@ -105,7 +115,9 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 				primary.Aliases = []string{authFileNameFor(sa)}
 			}
 		}
-		if !candidateOnCooldown(primary) {
+		primary.RateModel = candidateRateModel(model, primary.Auth)
+		if !candidateOnCooldown(primary) || candidateSoftCooldown(primary) {
+			primary.RecoveryProbe = candidateOnCooldown(primary)
 			pool.Primary = primary
 		}
 		return pool
@@ -149,12 +161,6 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 		if sa, err := authGetSource(f.AuthIndex); err == nil {
 			cand.Auth = sa
 		}
-		// Check cooldown after resolving the credential so a UID stored in the
-		// provider payload cannot be bypassed by a different host filename or
-		// core record ID.
-		if candidateOnCooldown(cand) {
-			continue
-		}
 		isRouted := false
 		if routedAuthID != "" {
 			isRouted = f.AuthIndex == routedAuthID || f.ID == routedAuthID ||
@@ -171,6 +177,17 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 			} else if isGlobalDomain(cand.Auth.Auth.Domain) != routedGlobal {
 				continue
 			}
+		}
+		cand.RateModel = candidateRateModel(model, cand.Auth)
+		if candidateOnCooldown(cand) {
+			if candidateSoftCooldown(cand) {
+				if isRouted {
+					cooling = append([]*failoverCandidate{cand}, cooling...)
+				} else {
+					cooling = append(cooling, cand)
+				}
+			}
+			continue
 		}
 		if isRouted {
 			pool.Primary = cand
@@ -190,9 +207,22 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 				primary.Aliases = []string{authFileNameFor(sa)}
 			}
 		}
+		primary.RateModel = candidateRateModel(model, primary.Auth)
 		if !candidateOnCooldown(primary) {
 			pool.Primary = primary
 		}
+	}
+	if model != "" && pool.Primary == nil && len(pool.Others) == 0 && len(cooling) > 0 && routedRealmKnown {
+		pick := cooling[0]
+		if !candidateProbeReady(pick) {
+			for _, c := range cooling[1:] {
+				if candidateProbeAt(c).Before(candidateProbeAt(pick)) {
+					pick = c
+				}
+			}
+		}
+		pick.RecoveryProbe = true
+		pool.Primary = pick
 	}
 	return pool
 }
@@ -203,12 +233,24 @@ func buildFailoverPool(routedAuthID string, primaryStorage ...[]byte) *failoverP
 // can send that request to the other realm (and the executor strips the model
 // prefix once, against the executing account's realm). Bare model IDs keep the
 // legacy realm-aware route.
-func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte) (*failoverPool, []byte, error) {
+func buildRequestFailoverPool(model, routedAuthID string, routedStorage []byte, attributes ...map[string]string) (*failoverPool, []byte, error) {
 	realm := mmPrefixRealm(model)
-	if realm == "" {
-		return buildFailoverPool(routedAuthID, routedStorage), routedStorage, nil
+	rateModel := model
+	var attrs map[string]string
+	if len(attributes) > 0 {
+		attrs = attributes[0]
 	}
-	return buildRealmFailoverPool(model, routedAuthID, routedStorage, realm)
+	hint := realm
+	if hint == "" {
+		if auth, err := parseStored(routedStorage); err == nil {
+			hint = accountRegion(auth)
+		}
+	}
+	rateModel = resolveUpstreamModel(model, hint, attrs)
+	if realm == "" {
+		return buildBareFailoverPool(routedAuthID, rateModel, routedStorage), routedStorage, nil
+	}
+	return buildRealmFailoverPool(rateModel, routedAuthID, routedStorage, realm)
 }
 
 // authInRealm reports whether a credential belongs to the given realm.
@@ -237,8 +279,9 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 	}
 	files, err := loadAuthList()
 	if err != nil {
-		cand := &failoverCandidate{AuthID: routedAuthID, RecordID: routedAuthID, Auth: routedAuth}
-		if authInRealm(routedAuth, realm) && !candidateOnCooldown(cand) {
+		cand := &failoverCandidate{AuthID: routedAuthID, RecordID: routedAuthID, Auth: routedAuth, RateModel: candidateRateModel(model, routedAuth)}
+		if authInRealm(routedAuth, realm) {
+			cand.RecoveryProbe = candidateSoftCooldown(cand)
 			return &failoverPool{Primary: cand}, routedStorage, nil
 		}
 		return nil, nil, fmt.Errorf("cannot find a %s CodeBuddy account for model %q: %w", realmLabel(realm), model, err)
@@ -265,37 +308,41 @@ func buildRealmFailoverPool(model, routedAuthID string, routedStorage []byte, re
 		if getErr != nil || !authInRealm(sa, realm) {
 			continue
 		}
-		cand := &failoverCandidate{AuthID: f.AuthIndex, RecordID: f.ID, Aliases: []string{f.Name}, Auth: sa}
-		if isAuthOnCooldown(f.AuthIndex) || candidateOnCooldown(cand) {
+		cand := &failoverCandidate{AuthID: f.AuthIndex, RecordID: f.ID, Aliases: []string{f.Name}, Auth: sa, RateModel: candidateRateModel(model, sa)}
+		if candidateOnCooldown(cand) {
 			cooling = append(cooling, eligible{file: f, cand: cand})
 			continue
 		}
 		candidates = append(candidates, eligible{file: f, cand: cand})
 	}
 	if len(candidates) == 0 {
-		// Every account in this realm is inside a rate-limit cooldown. Failing
-		// here turns a burst of upstream 429s into a realm-wide outage for the
-		// whole cooldown window, which the client sees as a broken provider
-		// (2026-10-13: every cb/* request answered 500 "no enabled Global
-		// CodeBuddy account is available" for ~30 minutes). Retry the routed
-		// account, or whichever recovers first, and let the upstream answer: a
-		// fresh 429 is retryable and never bills a rejected call.
-		pick := (*failoverCandidate)(nil)
-		for _, c := range cooling { // the account the host routed to comes first
-			if matchesRouted(c.file) {
+		// Admit at most one bounded recovery probe, and only for a soft rate
+		// limit. Exhausted accounts never become probes. Prefer the routed
+		// ready probe; otherwise rank by the effective expiry of ALL aliases.
+		var pick *failoverCandidate
+		for _, c := range cooling {
+			if candidateSoftCooldown(c.cand) && matchesRouted(c.file) && candidateProbeReady(c.cand) {
 				pick = c.cand
 				break
 			}
 		}
-		for _, c := range cooling { // otherwise whichever recovers first
-			if pick == nil || authCooldownUntil(c.cand.AuthID).Before(authCooldownUntil(pick.AuthID)) {
-				pick = c.cand
+		if pick == nil {
+			for _, c := range cooling {
+				if candidateSoftCooldown(c.cand) && (pick == nil || candidateProbeAt(c.cand).Before(candidateProbeAt(pick))) {
+					pick = c.cand
+				}
 			}
+		}
+		if pick != nil {
+			pick.RecoveryProbe = true
+		} else if len(cooling) > 0 {
+			// Keep valid storage/identity for terminal accounting, not an
+			// executable probe. The loop will return unavailable without I/O.
+			pick = cooling[0].cand
 		}
 		if pick == nil {
 			return nil, nil, fmt.Errorf("no enabled %s CodeBuddy account is available for model %q", realmLabel(realm), model)
 		}
-		fmt.Fprintf(os.Stderr, "[workbuddy] failover: every %s account is cooling down; retrying %q\n", realmLabel(realm), redactSecrets(pick.AuthID))
 		storage, err := json.Marshal(pick.Auth)
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot prepare %s account: %w", realmLabel(realm), err)
@@ -347,7 +394,7 @@ func (p *failoverPool) ordered(primaryStorage []byte) []*failoverCandidate {
 				auth = sa
 			}
 		}
-		out = append(out, &failoverCandidate{AuthID: c.AuthID, RecordID: c.RecordID, Aliases: append([]string(nil), c.Aliases...), Auth: auth})
+		out = append(out, &failoverCandidate{AuthID: c.AuthID, RecordID: c.RecordID, Aliases: append([]string(nil), c.Aliases...), Auth: auth, RateModel: c.RateModel, RecoveryProbe: c.RecoveryProbe})
 	}
 	add(p.Primary, primaryStorage)
 	for _, c := range p.Others {
@@ -456,20 +503,32 @@ type failoverAttemptFn func(cand *failoverCandidate) (attemptOutcome, int, strin
 // runFailover executes attemptFn across eligible accounts: the routed account
 // first, then each fallback. Throttled/exhausted accounts are temporarily
 // skipped (no auth mutation); ambiguous or request-wide failures stop the loop.
-func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn) failoverResult {
+func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	for _, cand := range cands {
-		if cand == nil || cand.Auth == nil || cand.AuthID == "" || candidateOnCooldown(cand) {
+		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
+		if admissionErr != nil {
+			return admissionFailureResult(res, admissionErr)
+		}
+		if release == nil {
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
-		outcome, status, body, err := attemptFn(cand)
+		outcome, status, body, err := func() (attemptOutcome, int, string, error) {
+			defer release()
+			outcome, status, body, err := attemptFn(cand)
+			// Publish quarantine before another queued request takes the slot.
+			if outcome == outcomeRateLimited || outcome == outcomeAccountExhausted {
+				markCandidateUnavailable(cand, outcome, body)
+			} else if outcome == outcomeSuccess {
+				resetCandidateCooldown(cand)
+			}
+			return outcome, status, body, err
+		}()
 		switch outcome {
 		case outcomeSuccess:
-			resetCandidateCooldown(cand)
 			return failoverResult{Outcome: outcomeSuccess, AuthID: cand.AuthID, Tried: res.Tried}
 		case outcomeRateLimited, outcomeAccountExhausted:
-			markCandidateUnavailable(cand, outcome, body)
 			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, body, err
 		default: // outcomeStop
@@ -501,16 +560,32 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 // runStreamFailover drives streaming attempts across eligible accounts. Once
 // the first chunk reached the client (emitted) or a non-rate-limit failure
 // occurs, the loop stops immediately.
-func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCandidate) (emitted bool, status int, err error)) failoverResult {
+func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	for _, cand := range cands {
-		if cand == nil || cand.Auth == nil || cand.AuthID == "" || candidateOnCooldown(cand) {
+		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
+		if admissionErr != nil {
+			return admissionFailureResult(res, admissionErr)
+		}
+		if release == nil {
 			continue
 		}
 		res.Tried = append(res.Tried, cand.AuthID)
-		emitted, status, err := attempt(cand)
+		emitted, status, err := func() (bool, int, error) {
+			defer release()
+			emitted, status, err := attempt(cand)
+			if err == nil {
+				resetCandidateCooldown(cand)
+			} else if !emitted {
+				if isAccountExhaustedResponse(status, err.Error()) {
+					markCandidateUnavailable(cand, outcomeAccountExhausted, err.Error())
+				} else if isRateLimitResponse(status, err.Error()) {
+					markCandidateUnavailable(cand, outcomeRateLimited, err.Error())
+				}
+			}
+			return emitted, status, err
+		}()
 		if err == nil {
-			resetCandidateCooldown(cand)
 			return failoverResult{Outcome: outcomeSuccess, AuthID: cand.AuthID, Tried: res.Tried}
 		}
 		// Chunks already reached the client — the stream must end here.
@@ -525,7 +600,6 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 			outcome = outcomeRateLimited
 		}
 		if outcome != outcomeStop {
-			markCandidateUnavailable(cand, outcome, err.Error())
 			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, err.Error(), err
 			continue
@@ -534,6 +608,18 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 			Status: status, Body: err.Error(), Err: err}
 	}
 	return unavailableFailoverResult(res)
+}
+
+func admissionFailureResult(res failoverResult, err error) failoverResult {
+	status, body := upstreamStatusOf(err)
+	outcome := outcomeStop
+	if status == 429 {
+		outcome = outcomeRateLimited
+	} // local overload: no lifecycle/account mutation
+	if body == "" {
+		body = err.Error()
+	}
+	return failoverResult{Outcome: outcome, AuthID: res.AuthID, Tried: res.Tried, Status: status, Body: body, Err: err}
 }
 
 func unavailableFailoverResult(res failoverResult) failoverResult {
@@ -549,6 +635,9 @@ func unavailableFailoverResult(res failoverResult) failoverResult {
 // provided. This is process-local, independent of lifecycle_auto, and never
 // disables/deletes an auth file; replenished accounts can be retried later.
 func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body string) {
+	if c == nil {
+		return
+	}
 	reason := "429"
 	if outcome == outcomeAccountExhausted {
 		reason = "credits_exhausted"
@@ -565,11 +654,12 @@ func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body
 		}
 	}
 	for _, key := range candidateCooldownIDs(c) {
+		if reason == "429" && c.RateModel != "" {
+			key = modelCooldownKey(key, c.RateModel)
+		}
 		markAuthCooldownReason(key, resetAt, reason)
 	}
-	if c != nil {
-		fmt.Fprintf(os.Stderr, "[workbuddy] failover: skip auth=%q reason=%s until=%s\n", redactSecrets(c.AuthID), reason, resetAt.UTC().Format(time.RFC3339))
-	}
+	fmt.Fprintf(os.Stderr, "[workbuddy] failover: skip auth=%q model=%q reason=%s until=%s\n", redactSecrets(c.AuthID), redactSecrets(c.RateModel), reason, resetAt.UTC().Format(time.RFC3339))
 }
 
 // failureIdentity maps terminal accounting and reconciliation to the last
@@ -587,7 +677,13 @@ func markCandidateCooldown(c *failoverCandidate, resetAt time.Time) {
 
 func resetCandidateCooldown(c *failoverCandidate) {
 	for _, key := range candidateCooldownIDs(c) {
-		resetAuthCooldown(key)
+		if c.RateModel == "" {
+			resetAuthCooldown(key) // legacy/test callers
+		} else {
+			// A success on model B must not clear model A's quarantine or a
+			// concurrently observed account-wide credit rejection.
+			resetAuthCooldown(modelCooldownKey(key, c.RateModel))
+		}
 	}
 }
 
@@ -639,12 +735,7 @@ func authUIDFromFilename(name string) string {
 }
 
 func candidateOnCooldown(c *failoverCandidate) bool {
-	for _, key := range candidateCooldownIDs(c) {
-		if isAuthOnCooldown(key) {
-			return true
-		}
-	}
-	return false
+	return !candidateCooldownState(c).NextRetryAt.IsZero()
 }
 
 func candUID(c *failoverCandidate, fallback string) string {

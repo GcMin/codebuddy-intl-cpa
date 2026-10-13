@@ -768,7 +768,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON, req.AuthAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -844,7 +844,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON)
+	pool, routedStorage, err := buildRequestFailoverPool(req.Model, req.AuthID, req.StorageJSON, req.AuthAttributes)
 	if err != nil {
 		return nil, err
 	}

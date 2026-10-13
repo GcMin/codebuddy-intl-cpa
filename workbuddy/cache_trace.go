@@ -21,18 +21,20 @@ const cacheTraceMaxMessages = 512
 // us find the first changed message, even for histories containing secret text.
 // Lists are capped; full messages_hash still covers messages beyond the cap.
 type cacheBodyFingerprint struct {
-	BodyBytes       int      `json:"body_bytes"`
-	BodyHash        string   `json:"body_hash"`
-	ValidJSON       bool     `json:"valid_json"`
-	SystemHash      string   `json:"system_hash,omitempty"`
-	FirstUserHash   string   `json:"first_user_hash,omitempty"`
-	ToolsHash       string   `json:"tools_hash,omitempty"`
-	OptionsHash     string   `json:"options_hash,omitempty"`
-	MessageCount    int      `json:"message_count"`
-	MessagesHash    string   `json:"messages_hash,omitempty"`
-	MessageHashes   []string `json:"message_hashes,omitempty"`
-	PrefixHashes    []string `json:"prefix_hashes,omitempty"`
-	HashesTruncated bool     `json:"hashes_truncated,omitempty"`
+	BodyBytes     int    `json:"body_bytes"`
+	BodyHash      string `json:"body_hash"`
+	ValidJSON     bool   `json:"valid_json"`
+	SystemHash    string `json:"system_hash,omitempty"`
+	FirstUserHash string `json:"first_user_hash,omitempty"`
+	ToolsHash     string `json:"tools_hash,omitempty"`
+	OptionsHash   string `json:"options_hash,omitempty"`
+	// Fixed option names only: values remain digests, never raw settings.
+	OptionHashes    map[string]string `json:"option_hashes,omitempty"`
+	MessageCount    int               `json:"message_count"`
+	MessagesHash    string            `json:"messages_hash,omitempty"`
+	MessageHashes   []string          `json:"message_hashes,omitempty"`
+	PrefixHashes    []string          `json:"prefix_hashes,omitempty"`
+	HashesTruncated bool              `json:"hashes_truncated,omitempty"`
 }
 
 type cacheTraceAttempt struct {
@@ -109,6 +111,14 @@ func fingerprintCacheBody(body []byte) cacheBodyFingerprint {
 	delete(obj, "functions")
 	options, _ := json.Marshal(obj)
 	out.OptionsHash = traceHash(options)
+	for _, key := range []string{"model", "temperature", "top_p", "max_tokens", "max_completion_tokens", "reasoning", "reasoning_effort", "tool_choice", "parallel_tool_calls", "stream", "stream_options", "seed", "response_format", "stop", "logprobs", "top_logprobs", "presence_penalty", "frequency_penalty", "n", "service_tier"} {
+		if value, ok := obj[key]; ok {
+			if out.OptionHashes == nil {
+				out.OptionHashes = make(map[string]string)
+			}
+			out.OptionHashes[key] = traceHash(value)
+		}
+	}
 	return out
 }
 

@@ -72,6 +72,26 @@
   Preserve older evidence during repeated JSONL rotation in the same month.
   Tracing does not change cache keys, retry policy, or request payloads.
 
+### Rate-limit admission and recovery
+
+- Serialize chat attempts per account UID/realm across models and host aliases.
+  Limit waiting callers to 16 with a 30-second timeout. Local overload sends no
+  upstream request and does not quarantine or mutate account files.
+- Recheck cooldown after queueing and publish rejected-attempt quarantine before
+  releasing the slot, so stale concurrent pools cannot repeat the same burst.
+- Scope soft 429/code 6004 cooldown to account + upstream model (10-minute cap);
+  preserve account-wide credit-exhaustion reset/30-minute quarantine.
+- When no account is ready, allow one soft-rate-limit recovery probe after a
+  30-second backoff. Preserve routed-ready preference and rank all aliases when
+  selecting the earliest alternative. Exhausted/disabled accounts are not probes.
+  Fix the former pool/loop mismatch that logged "retrying" but skipped the attempt.
+- Add real-executor mock tests for prefixed/bare non-stream, sync-stream and async
+  pump recovery/rejection, concurrent bursts, probe single-flight, aliases, queue
+  cancellation and credit/model isolation. No paid upstream burst test.
+- Add fixed-name per-option digests and multi-log cache study tools. Detect partial
+  prefix loss relative to previous input instead of treating every low hit ratio
+  as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
+
 ### Exhausted-account failover
 
 - Explicit credit rejection (HTTP 402, code 14018, or credit-exhaustion text
@@ -640,14 +660,3 @@
 
 ### Fixed
 - Normalize OpenAI object `tool_choice` for CodeBuddy upstream
-
-### Rate-limit outage fix
-
-- A realm whose accounts are all inside a rate-limit cooldown stays routable:
-  the pool retries the routed account (or the first to recover) instead of
-  answering 500 "no enabled Global CodeBuddy account is available". Observed
-  2026-10-13: a burst of parallel requests 429'd every Global account, then all
-  `cb/*` requests failed for ~30 minutes until the host was restarted.
-- Soft rate-limit (429 / code 6004) cooldowns are capped at 10 minutes; credit
-  exhaustion keeps the 30-minute/reset backoff. Early retries cost one upstream
-  round-trip and never bill a rejected call.

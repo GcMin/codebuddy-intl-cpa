@@ -104,6 +104,22 @@ empty HTTP 200 streams, and transport errors stop the request without replay.
 Failover can incur a prompt-cache miss on the replacement account; cache sharing
 varies by model/backend.
 
+The dev branch limits chat execution to **one active request per account** across
+models and duplicate host identities (UID + realm). Up to 16 callers may wait for
+30 seconds; overload stops locally without sending a paid request. The executor
+rechecks quarantine after queueing, so a pool built before a 429 cannot keep
+sending requests to that rejected account. Separate CPA processes have separate
+limits; prod and dev must not use the same account concurrently.
+
+Soft 429/code 6004 quarantine is **account + upstream model**. Credit exhaustion
+remains account-wide. When all accounts for a model are cooling, a request may
+probe one soft-limited account after 30 seconds, with one probe at a time per
+account. A fresh rejection renews backoff. The routed ready account takes
+priority; otherwise the pool picks the earliest probe across all account aliases.
+The plugin does not probe exhausted or disabled accounts, cross realms, or replay
+partial/empty/transport-failed responses. Upstream can still reject requests for
+RPM, token-volume or shared quotas; admission cannot guarantee upstream capacity.
+
 ### 3. Per-request usage and credit log
 
 Every chat request that flows through the plugin is recorded — account, model, input /
@@ -115,7 +131,11 @@ panel section. No credentials are ever written.
 The dev branch also records content-free request hashes and actual outgoing CID
 alongside usage to investigate transient cache misses. See
 [cache tracing](workbuddy/docs/cache-tracing.md) for fields, privacy limits, and
-the comparison script. It does not change request bodies or replay cache misses.
+the comparison script. Per-option digests identify changes to known settings
+without recording their values. `scripts/study-cache-misses.py` creates a private
+metadata-only report across active and rotated logs, separating prefix loss,
+account changes, changed settings and normal prompt growth. It does not change
+request bodies or replay cache misses.
 
 This is also what made the cache economics visible: a 24k-token request with a full cache
 hit bills ~0.05 credit instead of ~0.62.

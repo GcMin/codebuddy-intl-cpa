@@ -15,6 +15,9 @@ request content, or billing. It does not retry a cache miss.
 - Cumulative `prefix_hashes[i]` covers messages 0 through i with length framing.
   Compare these and `message_hashes` to locate the first changed message. The
   arrays stop at 512 messages; the complete `messages_hash` still covers the tail.
+- Per-option digests for a fixed list of known settings (model, temperature,
+  reasoning, token limits, tool choice, response format, etc.). Values and arbitrary
+  option names are not logged. Old records have only the combined options hash.
 - Per-attempt runtime auth ID, actual outgoing `X-Conversation-ID` and
   `X-Request-ID`, start time and HTTP status. Failover attempts share the inbound
   trace but retain their own outgoing account/request identity.
@@ -50,12 +53,26 @@ python3 scripts/compare-cache-traces.py /path/to/request-usage.jsonl \
   --timestamp '2026-10-13T06:00:00Z'
 ```
 
-Without a selector, the script picks the latest low-hit prompt over 1K tokens
-(or the latest trace if none matches). It compares adjacent records with the same
-CID, then the same CID and account. It excludes interleaved unrelated sessions
-and prints accounting/hashes only. Use each rotated file separately if the target
-and its neighbors span rotation; filenames retain older monthly evidence when a
-second rotation occurs in the same month.
+Without a selector, the script picks the latest prefix-loss candidate over 1K
+input tokens (or the latest trace). It compares successful neighbors with the same
+CID **and model**, then the same account, ordered by request start. It skips failed
+neighbors and unrelated sessions. Partial hits count as possible loss if read
+falls below the previously cached input; a large new tail alone does not.
+
+To collect a private study across active and rotated logs:
+
+```sh
+python3 scripts/study-cache-misses.py /path/to/request-usage*.jsonl \
+  --model gpt-6.1-sol --since '2026-10-13T05:54:00Z' \
+  --output /private/path/cache-study.json
+```
+
+The output uses mode 0600 and copies accounting/fingerprint comparisons only. It
+separates first-observed sessions, retained previous prefix, same-account stable
+prefix loss, cross-account changes, changed settings, capped evidence and lag
+follow-ups after a miss. Classification describes evidence, not the upstream root
+cause. The heuristic uses a 2% tolerance against the previous input minus three
+protocol tokens; do not infer prices or cache TTL from a category count.
 
 Read changes as evidence, not a verdict:
 
