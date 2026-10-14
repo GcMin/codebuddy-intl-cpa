@@ -92,6 +92,11 @@ Reference: v0.9.7 bump was
 
 ## 5. Post-release
 
+- [ ] **Release body GitHub pendek**: highlight bullet (maks ±8) + link ke full
+      CHANGELOG (`…/blob/main/workbuddy/CHANGELOG.md#<versi-tanpa-titik>`) + tabel
+      aset. JANGAN paste CHANGELOG utuh — body 0.9.7 versi pertama 23KB dan daftar
+      zip tenggelam di bawah (keluhan Noel). Detail panjang tempatnya di
+      CHANGELOG.md.
 - [ ] Reply to issues fixed by the release **only after** the release exists
       (include the version and the upgrade path); leave still-broken issues
       open with a status comment instead.
