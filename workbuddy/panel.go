@@ -197,6 +197,10 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 			acct.ConcurrencyCurrent = inFlight[gateKey]
 			acct.ConcurrencyKey = gateKey
 			acct.ConcurrencyKnown = true
+			if isGlobalDomain(sa.Auth.Domain) && trialClaimedRemembered(f.AuthIndex) {
+				// No cached credits at all, but we know the pack was used.
+				acct.TrialClaimed = true
+			}
 			if ds, ok := dailyByAuth[f.AuthIndex]; ok {
 				copy := ds
 				acct.Daily = &copy
@@ -234,7 +238,10 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 						acct.Credits = e.credits
 						acct.Exhausted = isCreditsExhausted(e.credits)
 						if isGlobalDomain(sa.Auth.Domain) {
-							acct.TrialClaimed = hasTrialPack(e.credits)
+							// The remembered marker matters most here: a light load
+							// often has no credits yet, and an expired pack leaves
+							// no trace in the list.
+							acct.TrialClaimed = hasTrialPack(e.credits) || trialClaimedRemembered(f.AuthIndex)
 						}
 					}
 				}
