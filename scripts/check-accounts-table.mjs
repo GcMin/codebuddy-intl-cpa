@@ -161,6 +161,21 @@ window.addEventListener('load',()=>{setTimeout(()=>{
   const tw=document.querySelector('.tbl-wrap'), tb=document.querySelector('.acct-table');
   out.tableWidth={wrap:tw.clientWidth, table:tb.scrollWidth, inner:window.innerWidth};
   out.colWidths=[...document.querySelectorAll('.acct-table thead th')].map(th=>Math.round(th.getBoundingClientRect().width));
+  // Actions must line up: the cell is right-aligned, so without fixed-width
+  // slots the group width decides the position ("Lit + Claimed" is narrower than
+  // "Lit + Claim pack") and the first button jumps 15px between rows.
+  // Slots are right-aligned, so a row with one button (CN "Checked in") sits in
+  // the LAST slot. Compare the last button across rows, and the first button
+  // only among rows that actually have two.
+  out.actionLastX=[];
+  out.actionFirstX=[];
+  document.querySelectorAll('#rows tr.acct-row').forEach(r=>{
+    const bs=[...r.querySelectorAll('.act button')].map(b=>Math.round(b.getBoundingClientRect().left));
+    if(!bs.length) return;
+    out.actionLastX.push(bs[bs.length-1]);
+    if(bs.length>1) out.actionFirstX.push(bs[0]);
+  });
+  out.actionWs=[...new Set([...document.querySelectorAll('#rows .actgrp > *')].map(el=>Math.round(el.getBoundingClientRect().width)))];
   // The CN row must have filled its daily piece from the lazy fetch.
   const cnRow=[...document.querySelectorAll('#rows tr.acct-row')].find(r=>(r.dataset.region||'')==='cn');
   out.cnDaily=cnRow?(cnRow.querySelector('.daily')||{}).textContent.replace(/\s+/g,' ').trim():'(no cn row)';
@@ -229,6 +244,9 @@ check('CN row fills its check-in state instead of showing no data',
 // line (the wrap regression produced 70px rows).
 check('every row has the same height', Math.max(...out.rowHeights) - Math.min(...out.rowHeights) <= 2, out.rowHeights);
 check('region badges never wrap', out.badgeWrap === 0, out.badgeWrap);
+check('the rightmost action button lines up on every row', new Set(out.actionLastX).size === 1, out.actionLastX);
+check('the first action button lines up across rows with two', new Set(out.actionFirstX).size === 1, out.actionFirstX);
+check('action slots share one width', out.actionWs.length === 1, out.actionWs);
 
 if (failures) {
   console.error(`\naccounts table check: ${failures} failure(s)`);

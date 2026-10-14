@@ -102,6 +102,10 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .acct-table td.today-cell{white-space:normal;font-variant-numeric:tabular-nums;min-width:104px}
 .acct-table td.sel,.acct-table th.sel{width:32px;text-align:center;padding-left:10px;padding-right:0}
 .acct-table td.act,.acct-table th.act{text-align:right;white-space:nowrap}
+/* Two fixed-width slots: every row lines up regardless of label length
+   ("Claimed" vs "Claim pack", "Lit" vs "Report"). */
+.actgrp{display:inline-flex;gap:6px;justify-content:flex-end;align-items:center}
+.actgrp>*{min-width:82px;text-align:center;box-sizing:border-box}
 .acct-table input[type=checkbox]{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
 .chev{display:inline-block;width:11px;color:var(--mut);transition:transform .15s;font-size:9px}
 .chev.open{transform:rotate(90deg);color:var(--acc)}
@@ -1527,7 +1531,7 @@ function rowHTML(a){
     <td class="daily" title="${esc(dy.title||dy.sub||"")}"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
     <td><span class="badge ${st.cls}">${st.label}</span></td>
     <td class="today-cell">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
-    <td class="act">${actionHTML}</td>
+    <td class="act"><span class="actgrp">${actionHTML}</span></td>
   </tr>`;
 }
 

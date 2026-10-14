@@ -116,6 +116,11 @@
 
 ### Table alignment and the missing CN check-in
 
+- The action column is a pair of fixed-width slots. It is right-aligned, so the
+  group width used to decide where the buttons landed: `Lit + Claimed` is 15px
+  narrower than `Lit + Claim pack`, which made the first button jump between
+  rows. Both slots now share one width and the column lines up.
+
 - The Today column is left-aligned like its own header (it was left-aligned in
   the header and right-aligned in the cells, which read as crooked) and may wrap
   instead of being squeezed: forcing it nowrap widened the table and pushed the
