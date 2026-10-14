@@ -48,6 +48,13 @@ for (const [idx, a] of Object.entries(byIndex)) {
 }
 const light = {accounts: (accounts.accounts || []).map(a => {
   const c = {...a}; delete c.credits;
+  // Reproduce the reported cold-cache shape for CN: credits already known from a
+  // warm cache, but no check-in summary yet. The row must fill itself in.
+  if (c.region === 'cn') {
+    const full = byIndex[c.auth_index];
+    c.credits = full && full.credits;
+    delete c.checkin;
+  }
   // Put the widest realistic content on every Global row: a long streak and a
   // long nickname. Without them the table fits and a wrap regression hides.
   if (c.region === 'global') {
@@ -154,6 +161,9 @@ window.addEventListener('load',()=>{setTimeout(()=>{
   const tw=document.querySelector('.tbl-wrap'), tb=document.querySelector('.acct-table');
   out.tableWidth={wrap:tw.clientWidth, table:tb.scrollWidth, inner:window.innerWidth};
   out.colWidths=[...document.querySelectorAll('.acct-table thead th')].map(th=>Math.round(th.getBoundingClientRect().width));
+  // The CN row must have filled its daily piece from the lazy fetch.
+  const cnRow=[...document.querySelectorAll('#rows tr.acct-row')].find(r=>(r.dataset.region||'')==='cn');
+  out.cnDaily=cnRow?(cnRow.querySelector('.daily')||{}).textContent.replace(/\s+/g,' ').trim():'(no cn row)';
   out.badgeWrap=[...document.querySelectorAll('#rows tr.acct-row')].filter(r=>{
     const tops=[...r.querySelectorAll('td:nth-child(3) .badge')].map(b=>Math.round(b.getBoundingClientRect().top));
     return new Set(tops).size>1;
@@ -208,6 +218,11 @@ check('toggling back to table restores rows', out.backToTable.rows === Math.min(
 // whole-string lookup, so a button built with markup inside the key silently
 // falls back to Chinese (that is exactly what shipped once).
 check('no Chinese text leaks into English rows', out.cjkInRows.length === 0, out.cjkInRows);
+// A CN account with credits but no cached check-in must fetch and show it,
+// instead of sitting on "No check-in data yet".
+check('CN row fills its check-in state instead of showing no data',
+  /Checked in|Not checked in|Inactive/.test(out.cnDaily) && !/No check-in data/.test(out.cnDaily), out.cnDaily);
+
 // Rows must stay one height and region badges must not wrap: wrapping made the
 // table ragged at narrower widths (54px rows became 70px).
 // Sub-pixel rounding makes this 53 vs 54; what matters is that no row grew a

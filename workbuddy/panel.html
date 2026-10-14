@@ -96,6 +96,10 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .acct-table tbody tr.acct-row.open{background:var(--acc-ring)}
 .acct-table tbody tr.picked{background:var(--acc-ring)}
 .acct-table td.num,.acct-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+/* Today is text, not a number: left-aligned like its header, and allowed to
+   wrap instead of being squeezed. Forcing it nowrap widened the table and the
+   column read as crooked against its left-aligned header. */
+.acct-table td.today-cell{white-space:normal;font-variant-numeric:tabular-nums;min-width:104px}
 .acct-table td.sel,.acct-table th.sel{width:32px;text-align:center;padding-left:10px;padding-right:0}
 .acct-table td.act,.acct-table th.act{text-align:right;white-space:nowrap}
 .acct-table input[type=checkbox]{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
@@ -1522,7 +1526,7 @@ function rowHTML(a){
     <td><div class="cred-top"><b>${cr.known?cr.remain:"?"}</b>${cr.known?" / "+cr.size:""}</div>${cr.known?`<div class="mini"><i class="${barCls}" style="width:${pct}%"></i></div>`:""}</td>
     <td class="daily" title="${esc(dy.title||dy.sub||"")}"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
     <td><span class="badge ${st.cls}">${st.label}</span></td>
-    <td class="num">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
+    <td class="today-cell">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
     <td class="act">${actionHTML}</td>
   </tr>`;
 }
@@ -1702,8 +1706,18 @@ async function refreshConcurrencyBadges(){
 setInterval(refreshConcurrencyBadges,5000);
 // Lazy-load: fetch credits for all cards that lack them, concurrently.
 // Each card fetches independently; failed ones retry once after 2s.
+// A row is complete when it has credits AND its daily piece: the growth-day
+// state for Global, the check-in summary for CN. Fetching only the rows without
+// credits left a warm-cached account showing "no data" for Daily forever, even
+// though the value was one request away.
+function rowNeedsFetch(a){
+  if(a.error||a.disabled) return false;
+  if(!a.credits) return true;
+  if((a.region||"cn")==="global") return !a.daily;
+  return !a.checkin;
+}
 function lazyLoadCredits(accounts){
-  const need=accounts.filter(a=>!a.credits&&!a.error&&!a.disabled);
+  const need=accounts.filter(rowNeedsFetch);
   if(!need.length) return;
   need.forEach(a=>{
     const idx=a.auth_index;
@@ -1717,6 +1731,10 @@ function lazyLoadCredits(accounts){
           if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
           if(acct.plan) a.plan=acct.plan;
         }
+        // The daily piece is why this fetch may have run at all: keep it, or the
+        // row keeps showing "no data" while the value sits in the response.
+        if(acct&&acct.checkin) a.checkin=acct.checkin;
+        if(acct&&acct.daily) a.daily=acct.daily;
         if(acct&&acct.error){ a.error=acct.error; }
         updateAccountViews(a);
       })
@@ -1728,6 +1746,8 @@ function lazyLoadCredits(accounts){
               const acct=(d.accounts||[])[0]||d;
               if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; }
               if(acct&&acct.plan) a.plan=acct.plan;
+              if(acct&&acct.checkin) a.checkin=acct.checkin;
+              if(acct&&acct.daily) a.daily=acct.daily;
               if(d.error||acct&&acct.error) a.error=d.error||acct.error;
               updateAccountViews(a);
             })

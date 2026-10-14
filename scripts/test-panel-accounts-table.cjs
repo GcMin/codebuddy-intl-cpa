@@ -19,6 +19,7 @@ const planLabelSrc = slice('function planLabel(', 'function progressHTML(');
 const creditOfSrc = slice('function creditOf(', 'function renderSummary(');
 const acctFilterSrc = slice('function accountsForFilter(', 'function creditOf(');
 const tableSrc = slice('const acctView = {', 'function renderAccounts()');
+const lazySrc = slice('function rowNeedsFetch(', 'function lazyLoadCredits(');
 
 const ctx = {
   tr: s => s,
@@ -29,7 +30,7 @@ const ctx = {
   CSS: {escape: s => s},
 };
 vm.createContext(ctx);
-vm.runInContext(escSrc + planLabelSrc + acctFilterSrc + creditOfSrc + tableSrc, ctx);
+vm.runInContext(escSrc + planLabelSrc + acctFilterSrc + creditOfSrc + tableSrc + lazySrc, ctx);
 
 // `const` declarations inside a VM script are script-scoped, not properties of
 // the context object, so pull the state object out explicitly.
@@ -261,4 +262,30 @@ test('table cells are nowrap and long content truncates instead of wrapping', ()
   assert.match(tdRule[0], /white-space:nowrap/, 'table cells must not wrap');
   assert.match(css, /\.nm-wrap\{[^}]*max-width/);
   assert.match(css, /\.nm-main\{[^}]*text-overflow:ellipsis/);
+});
+
+// ---- lazy load coverage ---------------------------------------------------------
+// A row is only complete with its daily piece. Fetching just the rows without
+// credits left a warm-cached CN account showing "no check-in data" forever, even
+// though one request would have filled it (that is exactly what the operator
+// saw: a CN row with credits but "-" for Daily).
+test('rowNeedsFetch asks for the daily piece, not only credits', () => {
+  const {rowNeedsFetch} = ctx;
+
+  // CN with credits but no check-in: the reported bug.
+  assert.equal(rowNeedsFetch({region: 'cn', credits: {total_remain: 1}, checkin: undefined}), true);
+  // CN complete.
+  assert.equal(rowNeedsFetch({region: 'cn', credits: {total_remain: 1}, checkin: {active: true}}), false);
+
+  // Global with credits but no growth-day state.
+  assert.equal(rowNeedsFetch({region: 'global', credits: {total_remain: 1}, daily: undefined}), true);
+  assert.equal(rowNeedsFetch({region: 'global', credits: {total_remain: 1}, daily: {lit: true}}), false);
+
+  // No credits at all: still needs a fetch regardless of region.
+  assert.equal(rowNeedsFetch({region: 'global', daily: {lit: true}}), true);
+  assert.equal(rowNeedsFetch({region: 'cn', checkin: {active: true}}), true);
+
+  // Never re-fetch rows that errored or are disabled.
+  assert.equal(rowNeedsFetch({region: 'global', error: 'boom'}), false);
+  assert.equal(rowNeedsFetch({region: 'cn', disabled: true}), false);
 });

@@ -114,6 +114,18 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Table alignment and the missing CN check-in
+
+- The Today column is left-aligned like its own header (it was left-aligned in
+  the header and right-aligned in the cells, which read as crooked) and may wrap
+  instead of being squeezed: forcing it nowrap widened the table and pushed the
+  action column off-screen.
+- Lazy loading now covers the whole row, not just credits. It only fetched rows
+  without credits, so an account whose credits came from a warm cache but whose
+  daily piece was never fetched kept showing `-` forever — that is why a CN
+  account displayed "No check-in data yet" while the value was one request away.
+  The response now also stores `checkin` / `daily`, which it previously dropped.
+
 ### Table tidy-up and English labels
 
 - Fix Chinese leaking into the English panel. Buttons were built by passing
