@@ -1,4 +1,4 @@
-.PHONY: build build-dev test lint clean release
+.PHONY: build build-dev build-darwin test lint clean release
 
 GO ?= go
 VERSION ?= $(shell tr -d ' \n\r' < VERSION 2>/dev/null || echo "dev")
@@ -6,9 +6,20 @@ LDFLAGS := -X main.version=$(VERSION)
 DEV_VERSION ?= $(VERSION)-dev
 DEV_LDFLAGS := -X main.version=$(DEV_VERSION) -X main.pluginRouteID=workbuddy-dev -X 'main.pluginDisplayName=CodeBuddy Dev' -X 'main.pluginMenuName=CodeBuddy Dev' -X 'main.pluginPanelBrand=CodeBuddy Dev'
 
+# Target arch for build-darwin (override on the command line, e.g. DARWIN_ARCH=amd64).
+DARWIN_ARCH ?= $(shell $(GO) env GOARCH)
+
 # Default target: build the production plugin for the current platform.
 build:
 	CGO_ENABLED=1 $(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o workbuddy.so .
+
+# Build the macOS plugin the way CI does. MACOSX_DEPLOYMENT_TARGET is not
+# optional here: clang defaults the deployment target to the build machine's
+# macOS version, and 0.9.6 shipped dylibs declaring minos 15.0 (issue #4 was
+# reported from macOS 12.7.2). scripts/check-darwin-dylib.py verifies it.
+build-darwin:
+	MACOSX_DEPLOYMENT_TARGET=11.0 CGO_ENABLED=1 GOOS=darwin GOARCH=$(DARWIN_ARCH) \
+		$(GO) build -buildmode=c-shared -ldflags "$(LDFLAGS)" -o workbuddy.dylib .
 
 # Build an isolated test plugin. The filename supplies CPA's plugin ID;
 # provider/auth identifiers remain workbuddy because the test CPA is isolated.

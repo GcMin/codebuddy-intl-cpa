@@ -116,6 +116,13 @@ jobs:
           echo "version=${CLEAN_VERSION} archive=workbuddy_${CLEAN_VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.zip"
 
       - name: Build shared library
+        env:
+          # Pin the deployment target. clang defaults it to the *runner's* macOS
+          # version, so 0.9.6 shipped dylibs declaring minos 15.0 — a plugin that
+          # told every Mac on macOS 11-14 it was built for a newer system
+          # (issue #4 was reported from macOS 12.7.2). Go 1.26 still supports
+          # macOS 11, so 11.0 is the honest floor.
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.goos == 'darwin' && '11.0' || '' }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -125,6 +132,10 @@ jobs:
               -o "dist/${LIB_NAME}" .
           rm -f dist/*.h || true
           file "dist/${LIB_NAME}" || true
+
+      - name: Verify darwin deployment target and ABI exports
+        if: matrix.goos == 'darwin'
+        run: python3 ../scripts/check-darwin-dylib.py "dist/${LIB_NAME}"
 
       - name: Package plugin (CPA ArchiveName)
         working-directory: .

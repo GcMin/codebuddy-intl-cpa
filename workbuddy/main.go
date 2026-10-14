@@ -123,20 +123,43 @@ var (
 // login states (user started a login but never finished).
 const loginStatesPruneInterval = time.Minute
 
-func init() {
-	go func() {
-		ticker := time.NewTicker(loginStatesPruneInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			now := time.Now()
-			loginStates.Range(func(key, value any) bool {
-				if lc, ok := value.(*loginCtx); ok && now.After(lc.expires) {
-					loginStates.Delete(key)
-				}
-				return true
-			})
+var loginJanitorOnce sync.Once
+
+// startLoginJanitor sweeps login states that were started but never polled.
+//
+// It is started on the first login instead of from init(), and that is not a
+// style preference: a c-shared library must be idle while dlopen is returning.
+// The Go runtime schedules the very first goroutine on m0, the thread that
+// loaded the library — the host's thread. On darwin/amd64 the runtime keeps the
+// current goroutine in one hardcoded TLS slot (0x30(GS); see
+// cmd/link/internal/ld/sym.go computeTLSOffset, "Apple has reserved a slot in
+// the TLS for Go"). A plugin goroutine left running on the host's thread after
+// load therefore makes the host read the plugin's g on its next allocation,
+// which surfaces as "bad sweepgen in refill" in the host and takes the whole
+// kernel down (golang/go#40131). Deferring the sweep keeps load time free of
+// goroutines and timers.
+func startLoginJanitor() {
+	loginJanitorOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(loginStatesPruneInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				pruneExpiredLogins(time.Now())
+			}
+		}()
+	})
+}
+
+// pruneExpiredLogins drops login states whose TTL has passed. Polls already
+// reject expired states, so this only reclaims states that were started and
+// then abandoned.
+func pruneExpiredLogins(now time.Time) {
+	loginStates.Range(func(key, value any) bool {
+		if lc, ok := value.(*loginCtx); ok && now.After(lc.expires) {
+			loginStates.Delete(key)
 		}
-	}()
+		return true
+	})
 }
 
 func main() {}

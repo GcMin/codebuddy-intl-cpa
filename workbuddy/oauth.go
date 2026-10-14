@@ -76,6 +76,7 @@ func handleStartLogin(raw []byte) ([]byte, error) {
 	if st.State == "" || st.AuthURL == "" {
 		return nil, fmt.Errorf("auth state: missing state or authUrl — please restart the login flow")
 	}
+	startLoginJanitor()
 	loginStates.Store(st.State, &loginCtx{client: client, expires: time.Now().Add(loginTTL)})
 	return okEnvelope(pluginapi.AuthLoginStartResponse{
 		Provider:  providerName,

@@ -114,6 +114,28 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Load-time silence and the macOS deployment target
+
+Two fixes for the darwin crash reported in issue #4 (`fatal error: bad sweepgen
+in refill` in the host immediately after the plugin was loaded).
+
+- Nothing runs at load time any more. The login janitor used to be started from
+  `init()`, which meant a goroutine and a ticker were alive while `dlopen` was
+  still returning. The Go runtime schedules the first goroutine on m0 — the
+  thread that called `dlopen`, i.e. the host's thread — and on darwin/amd64 it
+  tracks the current goroutine in a single hardcoded TLS slot (`0x30(GS)`, see
+  `cmd/link/internal/ld/sym.go: computeTLSOffset`: "Apple has reserved a slot in
+  the TLS for Go"). A plugin goroutine left running on the host's thread after
+  load leaves the host reading the plugin's `g`, which is exactly the reported
+  `bad sweepgen in refill`. The sweep now starts on the first login.
+  `TestNothingRunsAtLibraryLoad` fails if anything in an `init` starts a
+  goroutine or a timer again.
+- The macOS build pinned `MACOSX_DEPLOYMENT_TARGET=11.0`. clang defaults the
+  deployment target to the build machine's macOS version, so every dylib up to
+  0.9.6 declared `minos 15.0` — telling Macs on macOS 11-14 the plugin was built
+  for a newer system. `scripts/check-darwin-dylib.py` verifies the target and
+  the `cliproxy_plugin_init` export in CI.
+
 ### Table alignment and the missing CN check-in
 
 - The action column is a pair of fixed-width slots. It is right-aligned, so the
