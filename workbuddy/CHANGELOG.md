@@ -132,6 +132,14 @@
   arrived with the credits payload, so one shared timer rewrites only the
   visible cells once a minute while a detail row is open. It pauses when the
   tab is hidden and stops entirely when no row is expanded.
+- `Daily report` reads the growth **heatmap** (read-only probe, fetched with the
+  other account details and cached with them), so the column reports reality
+  instead of only our own report run: the host's systemd timer
+  (`report-codebuddy-daily.service`, every 2h at :15) is what lights the days for
+  most accounts. Lit accounts show `score N` + streak; unlit show the last lit
+  date; a failed attempt of ours shows the reason. Without any data the column
+  shows `-` rather than claiming the account has not reported. `GET /credits`
+  also returns `daily` so a lazy load keeps the column current.
 - `Daily report` distinguishes the two mechanisms: Global shows the growth
   report (reported / not reported / failed, `score`), CN shows check-in
   (`today_checked_in` + streak). Both are once per day; only the Global bonus

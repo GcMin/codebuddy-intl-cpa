@@ -70,10 +70,14 @@ test('dailyOf: CN uses check-in, Global uses the growth report, unknown stays un
   assert.equal(dailyOf({region: 'cn', checkin: {active: true, today_checked_in: true, streak_days: 13}}).label, '已签到');
   assert.equal(dailyOf({region: 'cn', checkin: {active: true, today_checked_in: false, streak_days: 3}}).label, '未签到');
   assert.equal(dailyOf({region: 'cn', checkin: {active: false}}).label, '未启用');
-  // Global
-  assert.equal(dailyOf({region: 'global', daily: {lit: true, score: 2}}).label, '已报告');
-  assert.equal(dailyOf({region: 'global', daily: {lit: false, status: 'reported'}}).label, '未报告');
-  assert.equal(dailyOf({region: 'global', daily: {status: 'failed', detail: 'heatmap: timeout'}}).label, '报告失败');
+  // Global — lit/score come from the heatmap, status from our own attempt.
+  assert.equal(dailyOf({region: 'global', daily: {lit: true, score: 2}}).label, '已点亮');
+  assert.match(dailyOf({region: 'global', daily: {lit: true, score: 2, lit_days: ['a', 'b', 'c']}}).sub, /2/);
+  assert.equal(dailyOf({region: 'global', daily: {lit: false, status: 'not-lit', last_lit: '2026-10-13'}}).label, '未点亮');
+  assert.match(dailyOf({region: 'global', daily: {lit: false, last_lit: '2026-10-13'}}).sub, /2026-10-13/);
+  assert.equal(dailyOf({region: 'global', daily: {lit: false, status: 'failed', detail: 'heatmap: timeout'}}).label, '报告失败');
+  // A failed attempt that still ended up lit must not read as a failure.
+  assert.equal(dailyOf({region: 'global', daily: {lit: true, score: 2, status: 'failed'}}).label, '已点亮');
   // No run recorded yet must NOT be reported as "not reported".
   const unknown = dailyOf({region: 'global'});
   assert.equal(unknown.label, '—');
@@ -105,7 +109,7 @@ test('rowHTML uses the gate key for the concurrency badge and shows all columns'
   assert.match(out, /data-region="global"/);
   assert.match(out, /345/);            // credits remain
   assert.match(out, /770/);            // credits size
-  assert.match(out, /已报告/);          // daily pill
+  assert.match(out, /已点亮/);          // daily pill (lit)
   assert.match(out, /acct-row/);
   assert.match(out, /class="chev/);
 });

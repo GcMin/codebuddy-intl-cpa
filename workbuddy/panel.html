@@ -909,6 +909,10 @@ const PANEL_EN = {
   "暂无积分包数据": "No credit package data",
   "暂无报告记录": "No report record yet",
   "报告失败": "Report failed",
+  "已点亮": "Lit",
+  "未点亮": "Not lit",
+  "上次点亮 ": "last lit ",
+  "尚未点亮": "not lit yet",
   "已报告": "Reported",
   "未报告": "Not reported",
   "奖励约 01:00 到账": "bonus ~01:00",
@@ -1418,11 +1422,17 @@ function dailyOf(a){
       ? {pill:"pill-done", label:tr("已签到"), sub, rank:0}
       : {pill:"pill-wait", label:tr("未签到"), sub, rank:1};
   }
+  // Global: lit/score come from the growth heatmap (authoritative — the host's
+  // own report timer may be what lit the day), status from our own attempt.
   const d=a.daily;
   if(!d) return {pill:"pill-off", label:"—", sub:tr("暂无报告记录"), rank:4};
-  if(d.status==="failed") return {pill:"pill-err", label:tr("报告失败"), sub:d.detail||"", rank:3};
-  if(d.lit) return {pill:"pill-done", label:tr("已报告"), sub:"score "+(d.score||0)+" · "+tr("奖励约 01:00 到账"), rank:0};
-  return {pill:"pill-wait", label:tr("未报告"), sub:(d.day||"")+(d.detail?" · "+d.detail:""), rank:1};
+  if(d.status==="failed" && !d.lit) return {pill:"pill-err", label:tr("报告失败"), sub:d.detail||"", rank:3};
+  if(d.lit){
+    const streak=(d.lit_days||[]).length;
+    return {pill:"pill-done", label:tr("已点亮"), sub:"score "+(d.score||0)+(streak?" · "+streak+tr(" 天连续"):""), rank:0};
+  }
+  const sub = d.last_lit ? tr("上次点亮 ")+d.last_lit : (d.detail||tr("尚未点亮"));
+  return {pill:"pill-wait", label:tr("未点亮"), sub:sub, rank:1};
 }
 
 function acctFiltered(){

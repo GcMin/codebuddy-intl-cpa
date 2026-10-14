@@ -14,6 +14,7 @@ import (
 type accountCacheEntry struct {
 	checkin *checkinSummary
 	credits *creditsSummary
+	daily   *growthDaily // Global only: today's growth-day state (authoritative)
 	plan    string
 	fetched time.Time
 }
@@ -94,8 +95,18 @@ func cachedAccountDetails(authID string, sa *storedAuth, force bool) (plan strin
 		errList = append(errList, msg)
 		errMu.Unlock()
 	}
-	wg.Add(3)
+	var daily *growthDaily
+	wg.Add(4)
 	go func() { defer wg.Done(); plan = fetchPaymentType(sa) }()
+	go func() {
+		defer wg.Done()
+		// Read-only heatmap probe: tells whether today already counts, which is
+		// what the panel's Daily column must report. Skipped for CN accounts
+		// (their reward is check-in, and the growth host differs).
+		if d := fetchGrowthDaily(sa); d != nil {
+			daily = d
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		if c, err := fetchCheckinStatus(sa); err == nil {
@@ -124,13 +135,20 @@ func cachedAccountDetails(authID string, sa *storedAuth, force bool) (plan strin
 		if plan == "" {
 			plan = prev.plan
 		}
+		if daily == nil || (daily.Err != "" && daily.Score == 0) {
+			// Keep the last good read rather than showing a read error as
+			// "not lit".
+			if prev.daily != nil && prev.daily.Err == "" {
+				daily = prev.daily
+			}
+		}
 	}
 	now := time.Now()
 	if cr != nil {
 		// Stamp snapshot time for panel/API consumers (A-09 observability).
 		cr.FetchedAt = now.UTC().Format(time.RFC3339)
 	}
-	accountCache.Store(authID, &accountCacheEntry{checkin: ci, credits: cr, plan: plan, fetched: now})
+	accountCache.Store(authID, &accountCacheEntry{checkin: ci, credits: cr, daily: daily, plan: plan, fetched: now})
 	// Soft cap: if map is huge, drop oldest-looking entries beyond bound.
 	pruneAccountCacheSoftCap(accountCacheSoftCap)
 	return plan, ci, cr, errList

@@ -240,8 +240,13 @@ func handleCreditsQuery(req pluginapi.ManagementRequest) map[string]any {
 				// checkin drives the CN check-in pill (and the card's button
 				// state) on lazy load; without it the panel shows "Inactive".
 				if v, ok := accountCache.Load(f.ID); ok {
-					if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil && e.checkin != nil {
-						acct["checkin"] = e.checkin
+					if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil {
+						if e.checkin != nil {
+							acct["checkin"] = e.checkin
+						}
+						if e.daily != nil {
+							acct["daily"] = e.daily
+						}
 					}
 				}
 				acct["exhausted"] = isCreditsExhausted(cr)

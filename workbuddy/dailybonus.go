@@ -138,6 +138,42 @@ type growthHeatmap struct {
 	Cells []growthHeatmapCell `json:"cells"`
 }
 
+// growthDaily is the read-only "is today lit" answer for one Global account.
+// The heatmap is the authoritative source for whether the daily 30-credit
+// Bonus Pack will be credited: the beacon we send only lights the day, and the
+// host's own report timer may be the one that sent it. Reading the heatmap
+// therefore tells the truth even when our own run record is empty.
+type growthDaily struct {
+	Today   string   `json:"today,omitempty"`    // date of the last heatmap cell
+	Score   int      `json:"score,omitempty"`    // today's score (0 = not lit)
+	Lit     bool     `json:"lit"`                // today counts as an active day
+	LastLit string   `json:"last_lit,omitempty"` // most recent lit date
+	LitDays []string `json:"lit_days,omitempty"` // recent lit dates (heatmap order)
+	ReadAt  string   `json:"read_at,omitempty"`
+	Err     string   `json:"error,omitempty"` // heatmap read failed
+}
+
+// fetchGrowthDaily reads the growth heatmap and derives today's state.
+func fetchGrowthDaily(sa *storedAuth) *growthDaily {
+	if sa == nil || !isGlobalDomain(sa.Auth.Domain) {
+		return nil
+	}
+	today, lit, err := fetchGrowthToday(sa)
+	if err != nil {
+		return &growthDaily{Err: truncateRedacted(err.Error(), 160), ReadAt: time.Now().UTC().Format(time.RFC3339)}
+	}
+	d := &growthDaily{Today: today.Date, Score: today.Score, Lit: today.Score > 0, ReadAt: time.Now().UTC().Format(time.RFC3339)}
+	if n := len(lit); n > 0 {
+		d.LastLit = lit[n-1]
+		// Keep the tail only: the panel shows a streak, not the whole season.
+		if n > 30 {
+			lit = lit[n-30:]
+		}
+		d.LitDays = lit
+	}
+	return d
+}
+
 // growthGet performs a GET against the growth family on the account's billing
 // host. billingCallOnce() cannot be reused here because it always issues POST,
 // and the heatmap only answers GET.

@@ -46,29 +46,86 @@ type wbAccount struct {
 // and fetches them lazily via /credits?auth_index=<idx>. This avoids hitting
 // upstream billing APIs for all accounts simultaneously on page load (which
 // causes 500 from rate-limited /v2/billing/meter/get-user-resource).
-// dailyStatus is the per-account view of the last daily-reward run.
+// dailyStatus is the per-account daily-report view.
+//
+// Lit/Score come from the growth heatmap (authoritative: it says whether today
+// already counts, whoever sent the beacon). Status/Detail come from our own
+// report run when we have one, so a failed send is visible too. Accounts with
+// neither show no daily block at all.
 type dailyStatus struct {
-	Day    string `json:"day,omitempty"`
-	Score  int    `json:"score,omitempty"`
-	Lit    bool   `json:"lit"`
-	Status string `json:"status,omitempty"`
-	Detail string `json:"detail,omitempty"`
-	When   string `json:"when,omitempty"`
+	Day     string   `json:"day,omitempty"`
+	Score   int      `json:"score,omitempty"`
+	Lit     bool     `json:"lit"`
+	LastLit string   `json:"last_lit,omitempty"`
+	LitDays []string `json:"lit_days,omitempty"`
+	Status  string   `json:"status,omitempty"`
+	Detail  string   `json:"detail,omitempty"`
+	When    string   `json:"when,omitempty"`
+	Source  string   `json:"source,omitempty"` // "heatmap" | "run"
 }
 
-// dailyStatusByAuth indexes the last run (in-memory or restored from disk).
-func dailyStatusByAuth() map[string]dailyStatus {
-	sum := getLastDailyBonus()
-	if sum == nil {
-		return nil
+// dailyStatusFor maps a heatmap read to a short status word.
+func dailyStatusFor(d *growthDaily) string {
+	if d == nil {
+		return ""
 	}
-	out := make(map[string]dailyStatus, len(sum.Results))
-	when := sum.When.Format(time.RFC3339)
-	for _, r := range sum.Results {
-		if r.AuthIndex == "" {
-			continue
+	if d.Lit {
+		return "already-lit"
+	}
+	return "not-lit"
+}
+
+// dailyStatusByAuth merges the live heatmap read (from the account cache) with
+// our own last report run. The heatmap wins on lit/score because the host's own
+// systemd timer may be the one that lit the day; the run record only adds the
+// status of OUR attempt (reported / already-lit / failed).
+func dailyStatusByAuth() map[string]dailyStatus {
+	out := map[string]dailyStatus{}
+
+	if sum := getLastDailyBonus(); sum != nil {
+		when := sum.When.Format(time.RFC3339)
+		for _, r := range sum.Results {
+			if r.AuthIndex == "" {
+				continue
+			}
+			out[r.AuthIndex] = dailyStatus{
+				Day: r.Day, Score: r.Score, Lit: r.Lit,
+				Status: r.Status, Detail: r.Detail, When: when, Source: "run",
+			}
 		}
-		out[r.AuthIndex] = dailyStatus{Day: r.Day, Score: r.Score, Lit: r.Lit, Status: r.Status, Detail: r.Detail, When: when}
+	}
+
+	// Live heatmap state, keyed by auth_index like the panel rows.
+	files, err := loadAuthList()
+	if err == nil {
+		for _, f := range files {
+			v, ok := accountCache.Load(f.ID)
+			if !ok {
+				continue
+			}
+			e, ok := v.(*accountCacheEntry)
+			if !ok || e == nil || e.daily == nil || e.daily.Err != "" {
+				continue
+			}
+			ds := out[f.AuthIndex]
+			ds.Lit = e.daily.Lit
+			ds.Score = e.daily.Score
+			if e.daily.Today != "" {
+				ds.Day = e.daily.Today
+			}
+			ds.LastLit = e.daily.LastLit
+			ds.LitDays = e.daily.LitDays
+			ds.Source = "heatmap"
+			// Keep our own attempt status (e.g. "failed"); the heatmap only
+			// knows the outcome.
+			if ds.Status == "" {
+				ds.Status = dailyStatusFor(e.daily)
+			}
+			out[f.AuthIndex] = ds
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -150,6 +207,18 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 				acct.Checkin = ci
 				acct.Credits = cr
 				acct.Exhausted = isCreditsExhausted(cr)
+				// cachedAccountDetails just refreshed the entry, including the
+				// growth-heatmap read. Read it back so this response carries the
+				// daily state instead of only the next (cache-warm) one.
+				if v, ok := accountCache.Load(f.ID); ok {
+					if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil && e.daily != nil && e.daily.Err == "" {
+						acct.Daily = &dailyStatus{
+							Day: e.daily.Today, Score: e.daily.Score, Lit: e.daily.Lit,
+							LastLit: e.daily.LastLit, LitDays: e.daily.LitDays,
+							Status: dailyStatusFor(e.daily), Source: "heatmap",
+						}
+					}
+				}
 				if isGlobalDomain(sa.Auth.Domain) {
 					acct.TrialClaimed = hasTrialPack(cr)
 				}
