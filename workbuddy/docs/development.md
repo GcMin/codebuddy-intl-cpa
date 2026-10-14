@@ -103,11 +103,17 @@ curl http://localhost:8317/v0/management/plugins/workbuddy/accounts \
 
 ## Release
 
-```bash
-# Tag and push
-make tag VERSION=0.8.0
+The full, ordered release procedure (pre-flight gate, tag-from-dev-first,
+release verification, fast-forward merge, **official plugin store PR**) lives
+in [release-checklist.md](release-checklist.md) — follow it verbatim; the
+ordering of steps 1–4 is what keeps `raw/main` from 404-ing during a release.
 
-# Build multi-arch zips (requires cross C toolchains)
+Quick commands (see the checklist for the whens and whys):
+
+```bash
+make tag VERSION=0.9.7      # tag + push from dev; CI builds 6 platforms & publishes
+
+# Multi-arch zips for local testing only (requires cross C toolchains)
 make release
 ```
 

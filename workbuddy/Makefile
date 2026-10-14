@@ -61,6 +61,8 @@ release: clean
 
 # Tag a release that CI turns into a GitHub release (usage: make tag VERSION=0.9.3).
 # The official plugin store reads v<version>, so keep the canonical tag shape.
+# TAG FROM dev, BEFORE merging to main — and follow up with the
+# CLIProxyAPI-Plugins-Store version-bump PR (see docs/release-checklist.md).
 tag:
 	git tag -a v$(VERSION) -m "CodeBuddy Intl CPA v$(VERSION)"
 	git push origin v$(VERSION)
