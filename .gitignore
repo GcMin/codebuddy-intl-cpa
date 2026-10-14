@@ -35,3 +35,4 @@ __pycache__/
 
 # Stray main-package binary from `go build ./...`
 /workbuddy/workbuddy
+/REPORTS/
