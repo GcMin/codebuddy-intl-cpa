@@ -62,7 +62,7 @@ the heatmap first and only reports days that are not lit yet, so extra runs are 
 
 | | |
 | --- | --- |
-| Schedule | `08:00 / 12:00 / 16:00 / 20:00` local, on the shared plugin scheduler tick |
+| Schedule | `08:00 / 12:00 / 16:00 / 20:00` in the plugin's local time, on the shared plugin scheduler tick |
 | Config | `daily_bonus: true` (default on) |
 | Panel | **Daily bonus (Global)** toggle, plus a per-row **Report** button |
 | Manual run | `POST /v0/management/plugins/workbuddy/dailybonus` (`{"auth_index":"…"}` for one account) |
@@ -80,6 +80,10 @@ resend would double-count the day (`score` 2 → 4). A failed send simply waits 
 next tick.
 - **Global accounts only.** CN accounts keep using the check-in path, and CN growth lives
 on a different host (`copilot.tencent.com`).
+- **The schedule follows the CPA process timezone**, i.e. the container's `TZ`, not the
+browser's. A container left on `Asia/Shanghai` runs these four ticks at 07:00 / 11:00 /
+15:00 / 19:00 WIB. The reward itself is credited on China time regardless, because "today"
+is read from the API rather than computed locally.
 - **Report all is paced, not a burst.** The bulk button walks the accounts one at a time
 with a 1.5s gap, matching the spacing of the host's own report script. A parallel burst
 is what produced upstream 429 storms.
@@ -93,9 +97,9 @@ rather than a claim.
 ### 2. CN daily check-in
 
 CN accounts keep their own reward path: a daily check-in worth **100 credits/day** plus
-500/month. The plugin runs it at **09:00 / 21:00** local when `checkin_auto` is on, and the
-panel offers a per-row **Check in** button and a **Check all** bulk action. Check-ins are
-serialized per account so two browser tabs cannot double-submit.
+500/month. The plugin runs it at **09:00 / 21:00** in the CPA process timezone when
+`checkin_auto` is on, and the panel offers a per-row **Check in** button and a **Check all**
+bulk action. Check-ins are serialized per account so two browser tabs cannot double-submit.
 
 ### 3. In-plugin account failover
 
