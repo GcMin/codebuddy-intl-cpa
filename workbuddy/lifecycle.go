@@ -2,7 +2,7 @@
 //   - CN exhausted  → disable auth file (disabled:true), re-enable after check-in when credits return
 //   - Global exhausted → delete auth file (one-shot quota)
 //   - Unknown credits → no-op (never mis-kill)
-//   - Hard credit errors from executor → recheck credits then apply policy
+//   - Hard credit errors from executor → reconcileByUID rechecks credits then applies policy
 //   - Soft rate limits → do not delete Global
 package main
 
@@ -235,22 +235,6 @@ func peerAuthDir() string {
 	return ""
 }
 
-// applyExhaustedPolicy applies disable (CN) or delete (Global).
-func applyExhaustedPolicy(authIndex, authID string, sa *storedAuth, cr *creditsSummary, reason string) error {
-	if !lifecycleEnabled() {
-		return nil
-	}
-	action := lifecycleActionFor(accountRegion(sa), cr)
-	switch action {
-	case lifecycleDelete:
-		return deleteAuth(authIndex, authID, sa)
-	case lifecycleDisable:
-		return disableAuth(authIndex, authID, sa, cr, reason)
-	default:
-		return nil
-	}
-}
-
 // syncAuthNote writes note without changing disabled state.
 func syncAuthNote(authIndex, authID string, sa *storedAuth, cr *creditsSummary, disabled bool) error {
 	if sa == nil {
@@ -386,28 +370,6 @@ func reconcileAllAccounts(force bool) []map[string]any {
 		}
 	}
 	return out
-}
-
-// reconcileAfterExecutorError triggers lifecycle when upstream reports hard credit failure.
-// AuthID from the executor may be the credential ID (UID) rather than runtime auth_index;
-// we resolve via host.auth.list when direct get fails.
-func reconcileAfterExecutorError(authID string, status int, body string) {
-	if !lifecycleEnabled() || strings.TrimSpace(authID) == "" {
-		return
-	}
-	if isSoftRateLimit(status, body) && !isHardCreditError(status, body) {
-		return
-	}
-	if !isHardCreditError(status, body) {
-		return
-	}
-	go func() {
-		idx, id := resolveAuthIndexAndID(authID)
-		if idx == "" {
-			return
-		}
-		_, _ = reconcileOneAccount(idx, id, true)
-	}()
 }
 
 // resolveAuthIndexAndID maps executor AuthID (index, file id, or account UID)

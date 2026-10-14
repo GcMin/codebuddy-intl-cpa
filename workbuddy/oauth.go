@@ -150,11 +150,7 @@ func handlePollLogin(raw []byte) ([]byte, error) {
 			ExpiresAt:    time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Unix(),
 			Domain:       tok.Domain,
 		},
-		Account: storedAccount{
-			UID:          acct.UID,
-			EnterpriseID: acct.EnterpriseID,
-			Nickname:     acct.Nickname,
-		},
+		Account:  storedAccount(acct),
 	}
 	loginStates.Delete(state)
 	return okEnvelope(pluginapi.AuthLoginPollResponse{

@@ -346,48 +346,6 @@ func rewriteSystemForUpstream(payload []byte) []byte {
 	return out
 }
 
-// ensureSystemMessage injects a minimal system message if none is present.
-// Global (www.workbuddy.ai) rejects user-only requests with code 11101
-// "Parse message failed: 11101:invalid request". CN (copilot.tencent.com)
-// does not require a system message but tolerates one. Inserting a
-// harmless system message unifies both paths.
-func ensureSystemMessage(payload []byte, sa *storedAuth) []byte {
-	if len(payload) == 0 {
-		return payload
-	}
-	// Only inject for Global; CN doesn't need it and we minimize diff.
-	if sa == nil || !isGlobalDomain(sa.Auth.Domain) {
-		return payload
-	}
-	var obj map[string]any
-	if json.Unmarshal(payload, &obj) != nil {
-		return payload
-	}
-	messages, ok := obj["messages"].([]any)
-	if !ok || len(messages) == 0 {
-		return payload
-	}
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		if role, _ := msg["role"].(string); strings.EqualFold(role, "system") {
-			return payload // already has system message
-		}
-	}
-	systemMsg := map[string]any{
-		"role":    "system",
-		"content": "You are a helpful assistant.",
-	}
-	obj["messages"] = append([]any{systemMsg}, messages...)
-	out, err := json.Marshal(obj)
-	if err != nil {
-		return payload
-	}
-	return out
-}
-
 // rewriteContentField sanitizes blocked templates in one message's content,
 // handling both plain-string and OpenAI multimodal (array of parts) shapes.
 // Returns true if the message was modified.

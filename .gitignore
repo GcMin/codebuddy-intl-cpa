@@ -32,3 +32,6 @@ __pycache__/
 
 # Local previews built from real snapshots (regenerate with mockups/build-accounts-mockup.py)
 /mockups/
+
+# Stray main-package binary from `go build ./...`
+/workbuddy/workbuddy

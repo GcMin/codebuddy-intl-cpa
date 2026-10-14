@@ -71,33 +71,8 @@ func wbCNModels() []pluginapi.ModelInfo {
 	}
 }
 
-func prefixCNModels(models []pluginapi.ModelInfo) []pluginapi.ModelInfo {
-	out := cloneModelInfos(models)
-	for i := range out {
-		if !strings.HasPrefix(strings.ToLower(out[i].ID), "cn/") {
-			out[i].ID = "cn/" + out[i].ID
-		}
-		if !strings.HasPrefix(strings.ToLower(out[i].Name), "cn ") {
-			out[i].Name = "CN " + out[i].Name
-		}
-		out[i].OwnedBy = providerName
-		if len(out[i].SupportedGenerationMethods) == 0 {
-			out[i].SupportedGenerationMethods = []string{"chat"}
-		}
-	}
-	return out
-}
-
 func isCNModelID(model string) bool {
 	return mmPrefixRealm(model) == realmCN
-}
-
-func stripCNModelPrefix(model string) (string, bool) {
-	model = strings.TrimSpace(model)
-	if len(model) < 3 || !strings.EqualFold(model[:3], "cn/") {
-		return model, false
-	}
-	return strings.TrimSpace(model[3:]), true
 }
 
 func authUsesGlobalModels(storageJSON []byte) bool {

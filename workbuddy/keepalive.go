@@ -171,16 +171,6 @@ func persistAuthTokens(authIndex string, sa *storedAuth) error {
 	return hostAuthSaveJSON(name, raw)
 }
 
-// markSessionDead flags an auth disabled via the host's standard `disabled`
-// field (CPA natively skips disabled auths in scheduling). The note records
-// the reason so the panel can surface "session dead, re-login required"
-// without needing a custom [SESSION-DEAD] marker.
-func markSessionDead(authIndex, authID string, sa *storedAuth) error {
-	unlock := lockAuthMutation(authIndex, authID)
-	defer unlock()
-	return markSessionDeadLocked(authIndex, sa)
-}
-
 // markSessionDeadLocked is called by refreshOneAuth while the account mutation
 // lock is already held. Keeping the physical read/save here avoids a nested
 // acquisition of the non-reentrant account mutex.
@@ -283,21 +273,6 @@ func runTokenKeepalive() *keepaliveSummary {
 	wg.Wait()
 	recordKeepalive(sum)
 	return sum
-}
-
-// nextKeepaliveTime mirrors nextCheckinTime but for keepaliveHours.
-func nextKeepaliveTime(now time.Time) time.Time {
-	var earliest time.Time
-	for _, h := range keepaliveHours {
-		t := time.Date(now.Year(), now.Month(), now.Day(), h, 0, 0, 0, now.Location())
-		if !t.After(now) {
-			t = t.Add(24 * time.Hour)
-		}
-		if earliest.IsZero() || t.Before(earliest) {
-			earliest = t
-		}
-	}
-	return earliest
 }
 
 // shouldRunKeepaliveNow reports whether the current local time is within

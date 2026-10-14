@@ -475,11 +475,6 @@ func creditFromUsageMap(m map[string]any) float64 {
 	return 0
 }
 
-// credit returns the credit of the last usage chunk seen by the collector.
-func (c *sseUsageCollector) credit() float64 {
-	return creditFromUsageMap(c.last)
-}
-
 // lastMap exposes the collector's last usage chunk (record hook input).
 func (c *sseUsageCollector) lastMap() map[string]any {
 	if c == nil {

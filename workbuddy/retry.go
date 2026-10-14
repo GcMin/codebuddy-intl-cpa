@@ -737,16 +737,6 @@ func candidateCooldownIDs(c *failoverCandidate) []string {
 	return keys
 }
 
-func authEntryOnCooldown(f pluginapi.HostAuthFileEntry) bool {
-	keys := []string{f.AuthIndex, f.ID, f.Name, authUIDFromFilename(f.Name)}
-	for _, key := range keys {
-		if isAuthOnCooldown(key) {
-			return true
-		}
-	}
-	return false
-}
-
 func authUIDFromFilename(name string) string {
 	name = strings.TrimSpace(name)
 	if !isWorkbuddyAuthName(name) || isLegacyWorkbuddyAuthName(name) {

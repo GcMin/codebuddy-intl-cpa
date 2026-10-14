@@ -1,6 +1,20 @@
 # Changelog
 
-## 0.9.7 (unreleased)
+## 0.9.7
+
+### Dead code sweep
+
+- staticcheck (U1000) flagged ten functions created by earlier refactors that no
+  code or test called: `applyExhaustedPolicy`, `reconcileAfterExecutorError`
+  (lifecycle.go — the live path is `reconcileByUID`, and the file header now
+  says so instead of naming the dead entry point), `prefixCNModels`,
+  `stripCNModelPrefix` (models.go — replaced by per-realm prefixes),
+  `authEntryOnCooldown` (retry.go), `ensureSystemMessage` (payload.go — the
+  in-place form survived), `cachedCheckinToday` (cache.go), `markSessionDead`,
+  `nextKeepaliveTime` (keepalive.go) and `sseUsageCollector.credit`
+  (request_usage.go). Deletion only — no call site existed. `handlePollLogin`
+  builds the account struct by conversion instead of a field-by-field literal
+  (staticcheck S1016).
 
 ### English translation table, and a documentation pass
 
