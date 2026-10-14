@@ -193,3 +193,40 @@ test('detailHTML says so explicitly when there is no package data', () => {
   assert.match(out, /暂无积分包数据/);
   assert.doesNotMatch(out, /pack-tbl/);
 });
+
+// ---- manual report button ------------------------------------------------------
+// Offered only while the day is not lit: the beacon is day-idempotent and
+// upstream answers "already-lit", so a button on a lit account is a dead click.
+test('report button appears only for a Global account whose day is not lit', () => {
+  const {rowHTML} = ctx;
+  const base = {auth_index: 'a1', nickname: 'G', uid: 'u', region: 'global', plan: 'trial'};
+
+  const unlit = rowHTML({...base, daily: {lit: false, status: 'not-lit', last_lit: '2026-10-13'}});
+  assert.match(unlit, /data-action="report"/);
+  assert.match(unlit, /未点亮/);
+
+  const lit = rowHTML({...base, daily: {lit: true, score: 2}});
+  assert.doesNotMatch(lit, /data-action="report"/);
+  assert.match(lit, /已点亮/);
+
+  // A failed attempt that is still unlit keeps the button (retry is meaningful).
+  const failed = rowHTML({...base, daily: {lit: false, status: 'failed', detail: 'heatmap: timeout'}});
+  assert.match(failed, /data-action="report"/);
+  assert.match(failed, /报告失败/);
+
+  // CN never gets the report button; its reward is check-in.
+  const cn = rowHTML({auth_index: 'c1', nickname: 'C', uid: 'u', region: 'cn',
+    checkin: {active: true, today_checked_in: false, streak_days: 3}});
+  assert.doesNotMatch(cn, /data-action="report"/);
+  assert.match(cn, /data-action="checkin"/);
+});
+
+test('a failed report shows the reason, not a bare "not reported"', () => {
+  const {dailyOf} = ctx;
+  const st = dailyOf({region: 'global', daily: {lit: false, status: 'failed', detail: 'heatmap: timeout'}});
+  assert.equal(st.label, '报告失败');
+  assert.equal(st.sub, 'heatmap: timeout');
+  assert.equal(st.pill, 'pill-err');
+  // rank 3 keeps failures sorted after pending and before unknown
+  assert.equal(st.rank, 3);
+});

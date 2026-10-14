@@ -6,6 +6,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -151,6 +153,16 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 			}
 			// CN: daily check-in when enabled.
 			ci, err := fetchCheckinStatus(sa)
+			switch {
+			case err != nil:
+				fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=failed detail=%s\n",
+					traceSafeID(f.AuthIndex), truncateRedacted(err.Error(), 160))
+			case ci == nil || !ci.Active:
+				fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=inactive\n", traceSafeID(f.AuthIndex))
+			case ci.TodayCheckedIn:
+				fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=already streak=%d\n",
+					traceSafeID(f.AuthIndex), ci.StreakDays)
+			}
 			if err == nil && ci != nil && ci.Active && !ci.TodayCheckedIn {
 				if _, callErr := performCheckinCall(sa); callErr == nil {
 					// Refresh once after a successful checkin call so cache reflects
@@ -170,6 +182,11 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 							}
 						}
 					}
+					fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=checked credit=%d streak=%d\n",
+						traceSafeID(f.AuthIndex), ci.DailyCredit, ci.StreakDays)
+				} else {
+					fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=failed detail=%s\n",
+						traceSafeID(f.AuthIndex), truncateRedacted(callErr.Error(), 160))
 				}
 			}
 			// Refresh cache with latest checkin status (merge, don't wipe credits/plan).
@@ -182,6 +199,7 @@ func processAutoCheckinAccount(f pluginapi.HostAuthFileEntry, doCheckin bool) {
 				if prev != nil {
 					entry.credits = prev.credits
 					entry.plan = prev.plan
+					entry.daily = prev.daily // keep the growth-day state
 				}
 				accountCache.Store(f.ID, entry)
 			}
@@ -245,6 +263,8 @@ func handleManualCheckin(req pluginapi.ManagementRequest) map[string]any {
 	}
 	wg.Wait()
 
+	fmt.Fprintf(os.Stderr, "[workbuddy] checkin: done accounts=%d\n", len(targets))
+
 	// Summary counters (field names are a panel contract — panel.html
 	// checkinAll reads success/already/fail/skipped_global/eligible).
 	successN, failN, alreadyN, globalN, eligibleN := 0, 0, 0, 0, 0
@@ -297,6 +317,8 @@ func handleManualCheckin(req pluginapi.ManagementRequest) map[string]any {
 // merge into the previous entry so credits/plan survive.
 func checkinOneAccount(f pluginapi.HostAuthFileEntry) map[string]any {
 	out := map[string]any{"auth_index": f.AuthIndex}
+	// Every exit path is logged, including the early "already checked in" one.
+	defer func() { logCheckinOutcome(f.AuthIndex, out) }()
 	unlock := lockAuthMutation(f.AuthIndex, f.ID)
 	defer unlock()
 
@@ -324,6 +346,8 @@ func checkinOneAccount(f pluginapi.HostAuthFileEntry) map[string]any {
 		out["skipped"] = true
 		out["reason"] = "already"
 		out["message"] = "already checked in today"
+		out["streak_days"] = ci.StreakDays
+		out["daily_credit"] = ci.DailyCredit
 		return out
 	}
 
@@ -357,6 +381,36 @@ func checkinOneAccount(f pluginapi.HostAuthFileEntry) map[string]any {
 		mergeCheckinCache(f.ID, &checkinSummary{TodayCheckedIn: true})
 	}
 	return out
+}
+
+// logCheckinOutcome emits one line per account for both the scheduled and the
+// manual path, so a check-in can be verified from `docker logs` instead of being
+// inferred from credits.
+func logCheckinOutcome(authIndex string, out map[string]any) {
+	if out == nil {
+		return
+	}
+	status := "checked"
+	switch {
+	case out["error"] != nil:
+		status = "failed"
+	case out["reason"] == "global":
+		status = "unsupported" // Global has no check-in; it uses the growth report
+	case out["reason"] == "already" || out["skipped"] == true:
+		status = "already"
+	}
+	detail := ""
+	if msg, _ := out["message"].(string); msg != "" && status != "checked" {
+		detail = " detail=" + truncateRedacted(msg, 120)
+	}
+	streak := int64(0)
+	if v, ok := out["streak_days"].(int64); ok {
+		streak = v
+	} else if v, ok := out["streak_days"].(int); ok {
+		streak = int64(v)
+	}
+	fmt.Fprintf(os.Stderr, "[workbuddy] checkin: auth=%s status=%s streak=%d%s\n",
+		traceSafeID(authIndex), status, streak, detail)
 }
 
 // mergeCheckinCache stores the latest check-in snapshot while preserving the

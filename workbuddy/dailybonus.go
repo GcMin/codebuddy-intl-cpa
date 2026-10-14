@@ -43,6 +43,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -291,6 +292,41 @@ var (
 	lastDailyBonus   *dailyBonusSummary
 )
 
+// logDailyReportLine emits one line per account. The run is otherwise silent,
+// so without this an operator cannot tell a successful report from a skipped
+// scheduler (token expiry, clock drift) until the credits fail to arrive.
+func logDailyReportLine(row dailyBonusRow) {
+	detail := ""
+	if row.Detail != "" {
+		detail = " detail=" + row.Detail
+	}
+	fmt.Fprintf(os.Stderr, "[workbuddy] daily-report: auth=%s day=%s lit=%t score=%d status=%s%s\n",
+		traceSafeID(row.AuthIndex), row.Day, row.Lit, row.Score, row.Status, detail)
+}
+
+// logDailyReportSummary emits the run totals.
+func logDailyReportSummary(sum *dailyBonusSummary) {
+	if sum == nil {
+		return
+	}
+	var lit, sent, failed, skipped int
+	for _, r := range sum.Results {
+		if r.Lit {
+			lit++
+		}
+		switch r.Status {
+		case "reported":
+			sent++
+		case "failed":
+			failed++
+		case "skipped":
+			skipped++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "[workbuddy] daily-report: done accounts=%d lit=%d sent=%d failed=%d skipped=%d\n",
+		len(sum.Results), lit, sent, failed, skipped)
+}
+
 func recordDailyBonus(s *dailyBonusSummary) {
 	lastDailyBonusMu.Lock()
 	lastDailyBonus = s
@@ -412,6 +448,8 @@ func runDailyBonus() *dailyBonusSummary {
 	if err != nil {
 		sum.Results = append(sum.Results, dailyBonusRow{Status: "failed", Detail: err.Error()})
 		recordDailyBonus(sum)
+		logDailyReportLine(sum.Results[0])
+		logDailyReportSummary(sum)
 		return sum
 	}
 	var wg sync.WaitGroup
@@ -431,7 +469,11 @@ func runDailyBonus() *dailyBonusSummary {
 		}()
 	}
 	wg.Wait()
+	for _, row := range sum.Results {
+		logDailyReportLine(row)
+	}
 	recordDailyBonus(sum)
+	logDailyReportSummary(sum)
 	return sum
 }
 
@@ -481,6 +523,7 @@ func handleDailyBonusNow(req pluginapi.ManagementRequest) map[string]any {
 		return map[string]any{"when": sum.When, "results": sum.Results}
 	}
 	row := runDailyBonusOne(authIndex, authIDForIndex(authIndex), dailyBonusRow{AuthIndex: authIndex})
+	logDailyReportLine(row)
 	return map[string]any{"when": time.Now(), "results": []dailyBonusRow{row}}
 }
 

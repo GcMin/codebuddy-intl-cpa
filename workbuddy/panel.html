@@ -445,6 +445,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <button id="refreshBtn" onclick="load(true,this)"><span data-i18n="刷新数据">刷新数据</span></button>
     <button class="sec" onclick="checkinAll(this)"><span data-i18n="全部签到">全部签到</span></button>
     <button class="sec" onclick="claimTrialAll(this)" title="仅限国际账号 · 每个账号限领一次" data-i18n-title="仅限国际账号 · 每个账号限领一次"><span data-i18n="全部领取">全部领取</span></button>
+    <button class="sec" onclick="reportAll(this)" title="为今天还没点亮的国际账号立即发送 report；已点亮会跳过" data-i18n-title="为今天还没点亮的国际账号立即发送 report；已点亮会跳过"><span data-i18n="全部报告">全部报告</span></button>
     <label class="toggle" title="仅限国内账号，每日 09:00 / 21:00 自动签到" data-i18n-title="仅限国内账号，每日 09:00 / 21:00 自动签到"><input type="checkbox" id="autoToggle" onchange="toggleAuto(this.checked)"> <span data-i18n="自动签到（国内）">自动签到（国内）</span></label>
     <label class="toggle" title="国际账号每日运行 4 次（08:00/12:00/16:00/20:00），点亮活跃日后次日可获得 30 积分奖励包" data-i18n-title="国际账号每日运行 4 次（08:00/12:00/16:00/20:00），点亮活跃日后次日可获得 30 积分奖励包"><input type="checkbox" id="bonusToggle" onchange="toggleBonus(this.checked)"> <span data-i18n="每日奖励（国际）">每日奖励（国际）</span></label>
     <span class="toggle" id="svtime"></span>
@@ -909,6 +910,19 @@ const PANEL_EN = {
   "暂无积分包数据": "No credit package data",
   "暂无报告记录": "No report record yet",
   "报告失败": "Report failed",
+  "报告": "Report",
+  "全部报告": "Report all",
+  "立即发送 report；奖励今晚到账": "Send the report now; the bonus lands tonight",
+  "为今天还没点亮的国际账号立即发送 report；已点亮会跳过": "Send the report now for Global accounts whose day is not lit yet; already-lit ones are skipped",
+  "报告已发送": "Report sent",
+  "报告完成": "Report finished",
+  "部分报告失败": "Some reports failed",
+  "全部已点亮": "All already lit",
+  "跳过": "Skipped",
+  "国内账号使用签到": "CN accounts use check-in",
+  " 个已点亮": " lit",
+  " 个失败": " failed",
+  "奖励今晚到账": "bonus lands tonight",
   "已点亮": "Lit",
   "未点亮": "Not lit",
   "上次点亮 ": "last lit ",
@@ -1285,6 +1299,7 @@ function bindCardActions(root){
       if(act==="checkin") checkin(idx, ev.currentTarget);
       else if(act==="claim") claimTrial(idx, ev.currentTarget);
       else if(act==="refresh") refreshCredits(idx, ev.currentTarget);
+      else if(act==="report") reportNow(idx, ev.currentTarget);
     });
   });
 }
@@ -1466,9 +1481,14 @@ function rowHTML(a){
   const t=acctView.today[a.auth_index]||{};
   let actionHTML;
   if((a.region||"cn")==="global"){
-    actionHTML=a.trial_claimed
+    // Manual report, offered only while today is not lit yet. Once lit there is
+    // nothing to do: the beacon is day-idempotent and upstream answers
+    // "already-lit", so a button would only invite a pointless click.
+    const lit=!!(a.daily&&a.daily.lit);
+    const reportBtn=lit?"":`<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`;
+    actionHTML=reportBtn+(a.trial_claimed
       ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
-      : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`;
+      : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`);
   }else{
     const ci=a.checkin||{};
     actionHTML=ci.today_checked_in
@@ -1711,6 +1731,52 @@ async function loadTodayUsage(){
 // updateAccountViews refreshes both representations of one account. The table
 // and the cards are both rendered from lastAccounts, so a single credit load
 // must update whichever one is currently on screen (and keep the other ready).
+// reportNow sends the growth beacon for one account (Global only). The plugin
+// reads the heatmap first, so this is a no-op when the day is already lit and a
+// fresh attempt when it is not.
+async function reportNow(idx, btn){
+  busy(btn,true);
+  try{
+    const d=await api("/dailybonus",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({auth_index:idx})});
+    const res=(d.results||[])[0]||{};
+    if(d.error||res.error){
+      toast(tr("报告失败"),"err",d.error||res.error);
+    }else if(res.lit){
+      toast(tr("已点亮"),"ok",tr("奖励今晚到账"));
+    }else if(res.status==="failed"){
+      toast(tr("报告失败"),"err",res.detail||"");
+    }else if(res.status==="skipped"){
+      toast(tr("跳过"),"warn",res.detail||tr("国内账号使用签到"));
+    }else{
+      toast(tr("报告已发送"),"ok",tr("奖励今晚到账"));
+    }
+    await load(false);
+  }catch(e){
+    toast(tr("报告失败"),"err",e.message||String(e));
+  }finally{
+    busy(btn,false);
+  }
+}
+// reportAll sends the beacon for every account whose day is not lit yet. One
+// request: the plugin skips accounts that are already lit (cheap heatmap read).
+async function reportAll(btn){
+  const unlit=(lastAccounts||[]).filter(a=>(a.region||"cn")==="global"&&!(a.daily&&a.daily.lit));
+  if(!unlit.length){ toast(tr("全部已点亮"),"ok"); return; }
+  busy(btn,true);
+  try{
+    const d=await api("/dailybonus",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    const rs=d.results||[];
+    const failed=rs.filter(r=>r.status==="failed").length;
+    const lit=rs.filter(r=>r.lit).length;
+    toast(failed?tr("部分报告失败"):tr("报告完成"), failed?"warn":"ok",
+      lit+tr(" 个已点亮")+(failed?tr(" · ")+failed+tr(" 个失败"):""));
+    await load(false);
+  }catch(e){
+    toast(tr("报告失败"),"err",e.message||String(e));
+  }finally{
+    busy(btn,false);
+  }
+}
 function updateAccountViews(a){
   updateOneRow(a);
   updateOneCard(a);

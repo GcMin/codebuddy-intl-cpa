@@ -114,6 +114,23 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Daily report and check-in observability
+
+- Both scheduled runners now log, per account and in summary, so an operator can
+  verify them from `docker logs` instead of inferring success from credits:
+  `daily-report: auth=... day=... lit=true score=2 status=already-lit` plus
+  `daily-report: done accounts=12 lit=11 sent=0 failed=0 skipped=1`, and the
+  same shape for `checkin` (`status=checked|already|unsupported|inactive|failed`).
+  Previously both runs were completely silent, so a skipped scheduler (expired
+  token, clock drift) went unnoticed until the credits failed to arrive.
+- Manual report from the panel: a `Report` button appears on a Global row only
+  while that day is not lit (a lit day has nothing to do — the beacon is
+  day-idempotent and upstream answers `already-lit`), plus `Report all` in the
+  toolbar, which sends the beacon for every account whose day is not lit yet.
+- Fix a cache-merge bug that dropped the growth-day state: the CN check-in path
+  rebuilt the cache entry from a struct literal carrying only credits + plan, so
+  the daily state disappeared on every check-in.
+
 ### Accounts table view
 
 - The accounts list now defaults to a table (SuperApp-style) with the card grid
