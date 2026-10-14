@@ -815,6 +815,13 @@ func loadStateLocked() (*wbStateFile, error) {
 }
 
 // loadState returns a copy of the current state file.
+//
+// The copy is deep for everything mutable: Realm entries are cloned, and the
+// DailyReport pointer plus its Rows map and the TrialClaimed map are duplicated.
+// Returning the cache's own maps/pointers would let a caller that mutates the
+// result corrupt the in-memory state without writing the file, and the next
+// mutateState would then persist the damage. Today every caller only reads, but
+// the function says "copy" and must mean it.
 func loadState() (wbStateFile, error) {
 	modelsStateMu.Lock()
 	defer modelsStateMu.Unlock()
@@ -828,14 +835,41 @@ func loadState() (wbStateFile, error) {
 		// Every top-level field must be copied here. Forgetting one silently
 		// hides it from all readers: DailyReport and TrialClaimed were both
 		// dropped, so their persistence looked broken while the data was on
-		// disk the whole time.
-		DailyReport:  state.DailyReport,
-		TrialClaimed: state.TrialClaimed,
+		// disk the whole time. TestLoadStateCopiesEveryField enforces this.
+		DailyReport:  cloneDailyReport(state.DailyReport),
+		TrialClaimed: cloneBoolMap(state.TrialClaimed),
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)
 	}
 	return out, nil
+}
+
+// cloneDailyReport duplicates the persisted run, including its Rows map, so the
+// caller never shares storage with the state cache.
+func cloneDailyReport(in *persistedDailyReport) *persistedDailyReport {
+	if in == nil {
+		return nil
+	}
+	out := &persistedDailyReport{When: in.When}
+	if in.Rows != nil {
+		out.Rows = make(map[string]persistedDailyRow, len(in.Rows))
+		for k, v := range in.Rows {
+			out.Rows[k] = v
+		}
+	}
+	return out
+}
+
+func cloneBoolMap(in map[string]bool) map[string]bool {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // mutateState applies fn to a freshly loaded state and persists the result

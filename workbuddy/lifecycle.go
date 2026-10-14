@@ -291,8 +291,7 @@ func syncAuthNote(authIndex, authID string, sa *storedAuth, cr *creditsSummary, 
 
 // reconcileOneAccount refreshes credits and applies lifecycle for one auth.
 // authIndex is used for host RPC (host.auth.get), authID (auth.ID) is used
-// for cache keys (accountCache/lifecycleState) so it matches the scheduler's
-// SchedulerAuthCandidate.ID.
+// for cache keys (accountCache/lifecycleState).
 // force ignores short-circuit only for credit fetch (uses force on cache via caller).
 func reconcileOneAccount(authIndex, authID string, force bool) (action lifecycleAction, err error) {
 	if !lifecycleEnabled() {

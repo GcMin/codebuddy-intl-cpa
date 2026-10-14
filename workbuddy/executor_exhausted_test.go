@@ -18,6 +18,7 @@ func (f exhaustedMockTransport) RoundTrip(r *http.Request) (*http.Response, erro
 // Run the actual executor entry points. This transport rejects all external
 // traffic and supplies only fake chat responses, so no paid request can escape.
 func TestExecutorCreditFailoverIntegration(t *testing.T) {
+	enableCacheTrace(t) // the assertions below read the per-attempt trace
 	for _, mode := range []string{"nonstream", "syncstream", "asyncstream"} {
 		for _, all := range []bool{false, true} {
 			name := mode + "/success"

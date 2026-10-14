@@ -201,3 +201,60 @@ func BenchmarkFingerprintLargeHistory(b *testing.B) {
 		fingerprintCacheBody(body)
 	}
 }
+
+// TestCacheTraceEnvParsing pins the switch itself. Parsing is a pure function so
+// this does not depend on whether the test process happens to have
+// WB_CACHE_TRACE set.
+func TestCacheTraceEnvParsing(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{"", false},      // the default: fingerprints off
+		{"   ", false},   // whitespace only is still off
+		{"0", false},     // an explicit off
+		{"false", false}, // an explicit off
+		{"1", true},
+		{"true", true},
+		{"YES", true},      // case-insensitive
+		{" on ", true},     // trimmed
+		{"garbage", false}, // anything unrecognised stays off
+	} {
+		if got := cacheTraceEnabledFromEnv(tc.value); got != tc.want {
+			t.Errorf("cacheTraceEnabledFromEnv(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
+// TestCacheTraceGateControlsRecording proves the switch actually gates the work:
+// off means no fingerprint and no per-request log, on means a full fingerprint.
+func TestCacheTraceGateControlsRecording(t *testing.T) {
+	original := cacheTraceEnabled.Load()
+	t.Cleanup(func() { cacheTraceEnabled.Store(original) })
+
+	body := traceBody("sys", "user")
+
+	cacheTraceEnabled.Store(false)
+	if tr := newCacheTrace(body, nil, body, nil, time.Now()); tr != nil {
+		t.Fatal("disabled gate produced a fingerprint")
+	}
+	// Consumers must tolerate a nil trace: this is what the request path passes
+	// when tracing is off.
+	var nilTrace *requestCacheTrace
+	if got := firstCacheTrace([]*requestCacheTrace{nilTrace}); got != nil {
+		t.Fatal("firstCacheTrace should pass nil through")
+	}
+	if idx := nilTrace.beginAttempt(nil, "auth"); idx != -1 {
+		t.Fatalf("beginAttempt on a nil trace returned %d, want -1", idx)
+	}
+	nilTrace.finishAttempt(0, 200) // must not panic
+
+	cacheTraceEnabled.Store(true)
+	tr := newCacheTrace(body, nil, body, nil, time.Now())
+	if tr == nil {
+		t.Fatal("enabled gate produced no fingerprint")
+	}
+	if tr.Upstream.BodyHash == "" || len(tr.Upstream.MessageHashes) == 0 {
+		t.Fatalf("enabled fingerprint is empty: %+v", tr.Upstream)
+	}
+}

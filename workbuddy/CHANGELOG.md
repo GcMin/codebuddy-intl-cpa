@@ -17,6 +17,28 @@
   the shipping panel (table view, per-row Report, Model Manager, per-realm
   prefixes) and state the darwin/amd64 limitation.
 
+### Cache tracing is opt-in, and loadState really copies
+
+- Cache fingerprints are now behind `WB_CACHE_TRACE=1` and off by default. They
+  were recorded unconditionally, which made them 99.4% of every usage line
+  (~976 message/prefix hashes per request), added a SHA-256 pass over the whole
+  prompt and two log lines per request, and pushed the usage query to 330ms
+  against a 52MB log. The docs already described the feature as something the
+  plugin *can* record; now the code matches.
+- `loadState()` returned the state cache's own `TrialClaimed` map and
+  `DailyReport` pointer, so a caller that mutated the result would have corrupted
+  the in-memory state without writing the file — and the next `mutateState` would
+  have persisted the damage. It now deep-copies both. Every current caller only
+  reads, so this was a trap rather than an active bug.
+- `TestLoadStateCopiesEveryField` walks `wbStateFile` with reflection, reloads a
+  fully populated file, and fails if a field is not copied. That class of bug had
+  shipped three times (DailyReport, TrialClaimed, model settings); it now fails a
+  test instead.
+- The cached host auth list is invalidated on every auth write and delete. The
+  helper claimed to be called on enable/disable/delete but was only reachable from
+  tests, so the failover pool and the daily-report overlay could use a stale
+  account set for up to 30s after an import or a lifecycle change.
+
 ### Model Manager (Global / CN)
 
 - New panel popup per realm — ⚙ Global Models / ⚙ CN Models in the toolbar.

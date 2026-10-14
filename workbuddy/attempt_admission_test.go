@@ -15,6 +15,16 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
+// enableCacheTrace turns the opt-in fingerprint recording on for one test. The
+// gate is read from the environment at process start, so a test flips the flag
+// directly instead of setting the variable.
+func enableCacheTrace(t *testing.T) {
+	t.Helper()
+	original := cacheTraceEnabled.Load()
+	cacheTraceEnabled.Store(true)
+	t.Cleanup(func() { cacheTraceEnabled.Store(original) })
+}
+
 func readyProbe(t *testing.T, c *failoverCandidate) {
 	t.Helper()
 	cooldownMu.Lock()
@@ -30,6 +40,7 @@ func readyProbe(t *testing.T, c *failoverCandidate) {
 }
 
 func TestRecoveryProbeExecutorPaths(t *testing.T) {
+	enableCacheTrace(t) // the usage assertions below read the attempt trace
 	for _, model := range []string{"cb/gpt-6.1-sol", "gpt-6.1-sol"} {
 		t.Run(model, func(t *testing.T) {
 			for _, mode := range []string{"nonstream", "syncstream", "asyncstream"} {
@@ -275,6 +286,7 @@ func TestBusyAccountFailsOverWithoutWaiting(t *testing.T) {
 }
 
 func TestBusyFallbackRealExecutorPaths(t *testing.T) {
+	enableCacheTrace(t) // the usage assertions below read the attempt trace
 	for _, mode := range []string{"nonstream", "syncstream", "asyncstream"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())

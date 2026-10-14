@@ -181,6 +181,11 @@ func hostAuthSaveJSONResponse(name string, raw []byte) (pluginapi.HostAuthSaveRe
 	if err != nil {
 		return pluginapi.HostAuthSaveResponse{}, fmt.Errorf("host.auth.save: %w", err)
 	}
+	// Every auth write goes through here (import, disable, re-enable, note
+	// refresh), so this is the one place that has to drop the cached host list.
+	// Without it the failover pool and the daily-report overlay kept using a
+	// snapshot for up to 30s after the account set changed.
+	invalidateAuthListCache()
 	result, err := hostBridgeUnwrap(rawResp, pluginabi.MethodHostAuthSave)
 	if err != nil {
 		return pluginapi.HostAuthSaveResponse{}, err
@@ -589,6 +594,11 @@ func deleteAuthFileInDir(path, dir string) error {
 	err := os.Remove(path)
 	if err != nil && os.IsNotExist(err) {
 		return nil
+	}
+	if err == nil {
+		// The account set changed: drop the cached host list so the failover pool
+		// stops offering a deleted credential.
+		invalidateAuthListCache()
 	}
 	return err
 }

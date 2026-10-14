@@ -813,7 +813,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	// prepareUpstreamBody does forceStream + normalizeTools + rewriteSystem +
 	// ensureSystemMessage + rewriteModel in ONE unmarshal/marshal pass.
 	body := prepareUpstreamBody(req.Payload, req.OriginalRequest, sa, upstreamModel)
-	trace := newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+	trace := newCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
 
 	// Failover (v0.8.8): when the routed account answers 429 / code 6004, the
 	// same request is retried on the next eligible enabled account. One usage
@@ -888,7 +888,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	}
 	// Single-pass JSON rewrite (see handleExecExecute for the non-stream path).
 	body = prepareUpstreamBody(body, nil, sa, upstreamModel)
-	trace := newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+	trace := newCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
 
 	headers := streamHeaders()
 	sseFramed := clientNeedsSSEFrame(req.Metadata)

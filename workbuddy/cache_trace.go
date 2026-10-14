@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -58,6 +59,48 @@ type requestCacheTrace struct {
 func traceHash(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:16])
+}
+
+// cacheTraceEnabled reports whether per-request cache fingerprints are collected.
+//
+// Off by default. The fingerprints dominate every usage record — measured at
+// 99.4% of the JSONL line, i.e. ~976 message/prefix hashes per request — and cost
+// a SHA-256 pass over the whole prompt plus two log lines per request. The usage
+// query also has to parse all of it to show five fields (330ms vs 90ms with the
+// log at 52MB). So they are opt-in diagnostics for the prompt-cache
+// investigations, not always-on telemetry. Set WB_CACHE_TRACE=1 to collect them.
+//
+// Atomic because tests flip it while request paths read it under -race.
+var cacheTraceEnabled atomic.Bool
+
+// cacheTraceEnabledFromEnv parses the WB_CACHE_TRACE switch. Pure so the
+// default (empty → off) can be tested without depending on the ambient
+// environment of the test process.
+func cacheTraceEnabledFromEnv(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// Reads the switch once at process start. This is a plain assignment, not a
+// goroutine or a timer: nothing may run at library load (see
+// TestNothingRunsAtLibraryLoad).
+func init() {
+	if cacheTraceEnabledFromEnv(os.Getenv("WB_CACHE_TRACE")) {
+		cacheTraceEnabled.Store(true)
+	}
+}
+
+// newCacheTrace returns a fingerprint for the request, or nil when tracing is
+// off. Callers pass the result straight through; every consumer tolerates nil
+// (the trace is an optional field on the usage record).
+func newCacheTrace(payload, original, upstream []byte, metadata map[string]any, started time.Time) *requestCacheTrace {
+	if !cacheTraceEnabled.Load() {
+		return nil
+	}
+	return newRequestCacheTrace(payload, original, upstream, metadata, started)
 }
 
 func traceDigest(h hash.Hash) string { return hex.EncodeToString(h.Sum(nil)[:16]) }

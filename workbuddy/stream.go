@@ -69,7 +69,7 @@ func streamHeaders() http.Header {
 func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req executorStreamRequest, body []byte, upstreamModel, authUID string, started time.Time, sseFramed bool, cands []*failoverCandidate, traces ...*requestCacheTrace) {
 	trace := firstCacheTrace(traces)
 	if trace == nil {
-		trace = newRequestCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+		trace = newCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
 	}
 	if cancel != nil {
 		defer cancel()

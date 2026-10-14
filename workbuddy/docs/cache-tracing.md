@@ -1,9 +1,17 @@
 # Content-free cache tracing
 
-The dev plugin records `cache_trace` in each new executor accounting line in
-`.codebuddy_data/request-usage.jsonl`. Existing rows remain readable and have no
-trace. This is observability only: the plugin does not change CID, model routing,
-request content, or billing. It does not retry a cache miss.
+Cache tracing is **off by default** and turned on with `WB_CACHE_TRACE=1` in the
+plugin's environment. When enabled, the plugin records `cache_trace` in each new
+executor accounting line in `.codebuddy_data/request-usage.jsonl`. Existing rows
+remain readable and have no trace. This is observability only: the plugin does not
+change CID, model routing, request content, or billing. It does not retry a cache
+miss.
+
+Why it is opt-in: the fingerprints dominate the accounting log — measured at
+99.4% of the JSONL line, roughly 976 message/prefix hashes per request — and cost
+a SHA-256 pass over the whole prompt plus two log lines per request. A usage query
+has to parse all of it to display five fields, which took 330ms versus 90ms with
+the log at 52MB. Enable it while investigating a specific miss, then turn it off.
 
 ## Recorded fields
 

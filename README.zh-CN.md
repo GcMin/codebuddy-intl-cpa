@@ -88,7 +88,7 @@ CPA 内置的冷却与重试只作用于宿主自身的执行器。`c-shared` �
 
 这也是让缓存经济性变得可见的原因：一个 24k Token 的请求在完全命中缓存时约 0.05 积分，而不是约 0.62。
 
-为排查偶发的提示缓存未命中，插件还可额外记录**不含内容的请求哈希**和实际发出的会话 ID。字段、隐私边界和对比脚本见[缓存追踪](workbuddy/docs/cache-tracing.md)。按选项的摘要只标识*哪一个*已知设置发生变化，不记录其取值。`scripts/study-cache-misses.py` 会在活动与轮转日志上生成私密的、仅含元数据的报告，区分前缀丢失、账号变化、设置变化和正常的提示增长；它不会修改请求体，也不会重放缓存未命中。
+为排查偶发的提示缓存未命中，插件还可额外记录**不含内容的请求哈希**和实际发出的会话 ID。该功能**默认关闭**——需要在插件环境中设置 `WB_CACHE_TRACE=1` 才会采集，因为指纹会占据记账日志的绝大部分（实测每行 99.4%）并拖慢用量页面。字段、隐私边界和对比脚本见[缓存追踪](workbuddy/docs/cache-tracing.md)。按选项的摘要只标识*哪一个*已知设置发生变化，不记录其取值。`scripts/study-cache-misses.py` 会在活动与轮转日志上生成私密的、仅含元数据的报告，区分前缀丢失、账号变化、设置变化和正常的提示增长；它不会修改请求体，也不会重放缓存未命中。
 
 ### 5. 模型管理（国际 / 国内）
 
@@ -214,6 +214,16 @@ cp workbuddy.so /path/to/cliproxyapi/plugins/
 | 构建目标 | linux/amd64、linux/arm64、darwin/amd64、darwin/arm64、windows/amd64、windows/arm64 |
 | 插件标识 | `workbuddy` |
 | Go | 1.26 |
+
+### 环境变量
+
+| 变量 | 作用 |
+| --- | --- |
+| `WORKBUDDY_DATA_DIR` | `workbuddy-state.json`、`session-affinity.json` 和用量日志所在目录，默认为认证目录下的 `.codebuddy_data`。 |
+| `WB_CACHE_TRACE` | 设为 `1`/`true`/`yes`/`on` 时记录不含内容的请求指纹，用于排查提示缓存。**默认关闭**，见[缓存追踪](workbuddy/docs/cache-tracing.md)。 |
+| `WB_MANAGEMENT_KEY` | 配置未提供管理密钥时的回退值。 |
+| `WB_SELF_URL` | 保存后触发宿主重新加载模型注册表所用的基础地址。 |
+| `USAGE_REPORT_URL`、`USAGE_REPORT_KEY` | 可选的 CPAMP 用量导入地址与密钥。 |
 
 ### 已知限制：Intel Mac
 
