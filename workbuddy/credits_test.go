@@ -128,3 +128,66 @@ func TestIsCreditsExhausted(t *testing.T) {
 		}
 	}
 }
+
+// The live trial pack is named just "Bonus Pack" — identical to the daily
+// 30-credit reward — so name matching alone never fired and the panel offered a
+// claim button on accounts that already had the pack. Recognise it by shape.
+func TestHasTrialPackByShape(t *testing.T) {
+	cr := func(packs ...packageSummary) *creditsSummary { return &creditsSummary{Packages: packs} }
+	signup := packageSummary{Name: "Bonus Pack", Size: 250, Remain: 0, CycleStart: "2026-09-30 22:04:24", CycleEnd: "2026-10-14 22:04:23"}
+	daily := packageSummary{Name: "Bonus Pack", Size: 30, Remain: 30, CycleStart: "2026-10-14 01:27:32", CycleEnd: "2026-11-14 01:27:31"}
+	monthly := packageSummary{Name: "Free Plan Subscription", Size: 100, Remain: 97, CycleStart: "2026-10-01 00:00:00", CycleEnd: "2026-10-31 23:59:59"}
+
+	if !hasTrialPack(cr(daily, monthly, signup)) {
+		t.Fatal("250-credit / 14-day pack must be recognised regardless of its name")
+	}
+	if hasTrialPack(cr(daily, monthly)) {
+		t.Fatal("daily 30 and monthly 100 must not look like the trial pack")
+	}
+	// Same size but the wrong window (a 30-day 250-credit pack is not the trial).
+	if hasTrialPack(cr(packageSummary{Name: "Bonus Pack", Size: 250, CycleStart: "2026-10-01 00:00:00", CycleEnd: "2026-10-31 00:00:00"})) {
+		t.Fatal("a 30-day 250-credit pack is not the 14-day trial pack")
+	}
+	// Legacy name-based shapes still work.
+	if !hasTrialPack(cr(packageSummary{Name: "CodeBuddy One-time Free 2-Week Pro Plan Trial"})) {
+		t.Fatal("name-based detection regressed")
+	}
+	// CN free tier must never read as a claimed trial.
+	if hasTrialPack(cr(packageSummary{Name: "CodeBuddy个人体验版", Size: 500})) {
+		t.Fatal("CN free tier is not the Global trial pack")
+	}
+	if hasTrialPack(nil) {
+		t.Fatal("nil credits must not claim a trial pack")
+	}
+}
+
+func TestParsePackageTimeAcceptsAPIShapes(t *testing.T) {
+	for _, raw := range []string{"2026-10-14 01:27:32", "2026-10-14T01:27:32", "2026-10-14T01:27:32Z"} {
+		if _, err := parsePackageTime(raw); err != nil {
+			t.Fatalf("parsePackageTime(%q): %v", raw, err)
+		}
+	}
+	for _, raw := range []string{"", "not-a-time"} {
+		if _, err := parsePackageTime(raw); err == nil {
+			t.Fatalf("parsePackageTime(%q) should fail", raw)
+		}
+	}
+}
+
+// A claim that upstream answers with 14051 must be remembered, otherwise the
+// button keeps offering a claim that can never succeed (the pack is gone from
+// the credits list once its 14-day window ends).
+func TestTrialClaimedMemoryRoundTrip(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+	if trialClaimedRemembered("auth-1") {
+		t.Fatal("nothing remembered yet")
+	}
+	rememberTrialClaimed("auth-1")
+	if !trialClaimedRemembered("auth-1") {
+		t.Fatal("marker not persisted")
+	}
+	if trialClaimedRemembered("auth-2") {
+		t.Fatal("marker leaked to another account")
+	}
+	rememberTrialClaimed("") // must be a no-op, not a panic
+}

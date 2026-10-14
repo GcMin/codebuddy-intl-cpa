@@ -842,3 +842,39 @@ func TestAtomicWriteFileKeepsOldContentOnFailure(t *testing.T) {
 		t.Fatalf("content = %q", raw)
 	}
 }
+
+// loadState builds a copy for callers; every top-level field must survive that
+// copy. DailyReport and TrialClaimed were silently dropped, which made their
+// persistence look broken while the data was on disk the whole time.
+func TestLoadStateCarriesEveryTopLevelField(t *testing.T) {
+	t.Setenv("WORKBUDDY_DATA_DIR", t.TempDir())
+	when := time.Now().UTC().Truncate(time.Second)
+	if err := mutateState(func(st *wbStateFile) error {
+		st.DailyReport = &persistedDailyReport{
+			When: when,
+			Rows: map[string]persistedDailyRow{"a1": {Day: "2026-10-14", Score: 2, Lit: true, Status: "already-lit"}},
+		}
+		st.TrialClaimed = map[string]bool{"a1": true}
+		st.Update.SeenVersion = "9.9.9"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := loadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DailyReport == nil || !got.DailyReport.When.Equal(when) {
+		t.Fatalf("DailyReport lost in copy: %+v", got.DailyReport)
+	}
+	if row, ok := got.DailyReport.Rows["a1"]; !ok || row.Score != 2 || !row.Lit {
+		t.Fatalf("DailyReport rows lost: %+v", got.DailyReport.Rows)
+	}
+	if !got.TrialClaimed["a1"] {
+		t.Fatalf("TrialClaimed lost in copy: %+v", got.TrialClaimed)
+	}
+	if got.Update.SeenVersion != "9.9.9" {
+		t.Fatalf("Update lost: %+v", got.Update)
+	}
+}

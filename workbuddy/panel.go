@@ -220,7 +220,7 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 					}
 				}
 				if isGlobalDomain(sa.Auth.Domain) {
-					acct.TrialClaimed = hasTrialPack(cr)
+					acct.TrialClaimed = hasTrialPack(cr) || trialClaimedRemembered(f.AuthIndex)
 				}
 				// Keep note in sync (throttled); do not block dashboard on save errors.
 				_ = syncAuthNote(f.AuthIndex, f.ID, sa, cr, acct.Disabled)

@@ -178,6 +178,13 @@ func handleClaimTrial(req pluginapi.ManagementRequest) map[string]any {
 				for k, v := range res {
 					out[k] = v
 				}
+				// Upstream answered "has applied trial": remember it so the panel
+				// stops offering a claim that cannot succeed. The pack vanishes
+				// from the credits list after 14 days, so this memory is the only
+				// way to tell "never got it" from "got it and it expired".
+				if claimed, _ := out["already_claimed"].(bool); claimed {
+					rememberTrialClaimed(authIndex)
+				}
 			}
 			// Invalidate credits cache (copy entry, set credits=nil, keep plan/checkin).
 			if v, ok := accountCache.Load(f.ID); ok {
@@ -223,7 +230,13 @@ func handleCreditsQuery(req pluginapi.ManagementRequest) map[string]any {
 					"auth_index": authIndex, "error": "load auth: " + err.Error(),
 				}}}
 			}
-			cr, err := fetchUserResource(sa)
+			// One explicit refresh must update EVERYTHING the row shows, not
+			// just credits: cachedAccountDetails fetches credits, plan,
+			// check-in and the growth-day state in parallel (singleflight) and
+			// stores them together. Fetching credits alone here left the Daily
+			// column stale, and the hand-rolled cache write dropped the daily
+			// state entirely.
+			plan, ci, cr, errs := cachedAccountDetails(f.ID, sa, true)
 			acct := map[string]any{
 				"auth_index": authIndex,
 				"nickname":   sa.Account.Nickname,
@@ -232,47 +245,23 @@ func handleCreditsQuery(req pluginapi.ManagementRequest) map[string]any {
 				"name":       f.Name,
 				"label":      f.Label,
 				"disabled":   f.Disabled,
+				"plan":       plan,
+				"credits":    cr,
 			}
-			if err != nil {
-				acct["error"] = err.Error()
-			} else {
-				acct["credits"] = cr
-				// checkin drives the CN check-in pill (and the card's button
-				// state) on lazy load; without it the panel shows "Inactive".
-				if v, ok := accountCache.Load(f.ID); ok {
-					if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil {
-						if e.checkin != nil {
-							acct["checkin"] = e.checkin
-						}
-						if e.daily != nil {
-							acct["daily"] = e.daily
-						}
-					}
+			if ci != nil {
+				acct["checkin"] = ci
+			}
+			if len(errs) > 0 {
+				acct["error"] = strings.Join(errs, "; ")
+			}
+			if v, ok := accountCache.Load(f.ID); ok {
+				if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil && e.daily != nil {
+					acct["daily"] = e.daily
 				}
-				acct["exhausted"] = isCreditsExhausted(cr)
-				if isGlobalDomain(sa.Auth.Domain) {
-					acct["trial_claimed"] = hasTrialPack(cr)
-				}
-				// Also fetch plan so the badge updates on lazy load.
-				acct["plan"] = fetchPaymentType(sa)
-				// Update cache so subsequent dashboard loads see fresh data.
-				now := time.Now()
-				if cr != nil {
-					cr.FetchedAt = now.UTC().Format(time.RFC3339)
-				}
-				// Merge into existing cache entry (keep checkin if present).
-				var prev *accountCacheEntry
-				if v, ok := accountCache.Load(f.ID); ok {
-					prev, _ = v.(*accountCacheEntry)
-				}
-				var ci *checkinSummary
-				if prev != nil {
-					ci = prev.checkin
-				}
-				plan, _ := acct["plan"].(string)
-				accountCache.Store(f.ID, &accountCacheEntry{
-					checkin: ci, credits: cr, plan: plan, fetched: now,
-				})
+			}
+			acct["exhausted"] = isCreditsExhausted(cr)
+			if isGlobalDomain(sa.Auth.Domain) {
+				acct["trial_claimed"] = hasTrialPack(cr) || trialClaimedRemembered(authIndex)
 			}
 			return map[string]any{"accounts": []map[string]any{acct}}
 		}

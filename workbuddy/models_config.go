@@ -683,6 +683,37 @@ type wbStateFile struct {
 	// shows "already reported today" per account and the in-memory summary is
 	// lost on every plugin restart (which would misreport every account).
 	DailyReport *persistedDailyReport `json:"daily_report,omitempty"`
+	// TrialClaimed remembers accounts upstream told us already used the one-time
+	// 250-credit pack (code 14051). The pack disappears from the credits list
+	// once its 14-day window ends, so shape detection alone cannot tell "never
+	// got it" from "got it and it expired" — this is the missing half.
+	TrialClaimed map[string]bool `json:"trial_claimed,omitempty"`
+}
+
+// rememberTrialClaimed persists the fact that an account already used the
+// one-time pack. Best effort: a failure only costs one extra probe later.
+func rememberTrialClaimed(authIndex string) {
+	authIndex = strings.TrimSpace(authIndex)
+	if authIndex == "" {
+		return
+	}
+	_ = mutateState(func(st *wbStateFile) error {
+		if st.TrialClaimed == nil {
+			st.TrialClaimed = map[string]bool{}
+		}
+		st.TrialClaimed[authIndex] = true
+		return nil
+	})
+}
+
+// trialClaimedRemembered reports whether a previous claim attempt was answered
+// with "already claimed".
+func trialClaimedRemembered(authIndex string) bool {
+	st, err := loadState()
+	if err != nil || st.TrialClaimed == nil {
+		return false
+	}
+	return st.TrialClaimed[strings.TrimSpace(authIndex)]
 }
 
 // persistedDailyReport is the on-disk form of the last daily-reward run.
@@ -794,6 +825,12 @@ func loadState() (wbStateFile, error) {
 	out := wbStateFile{
 		Realm:  make(map[string]mmSettings, len(state.Realm)),
 		Update: state.Update,
+		// Every top-level field must be copied here. Forgetting one silently
+		// hides it from all readers: DailyReport and TrialClaimed were both
+		// dropped, so their persistence looked broken while the data was on
+		// disk the whole time.
+		DailyReport:  state.DailyReport,
+		TrialClaimed: state.TrialClaimed,
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)

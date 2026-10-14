@@ -440,11 +440,20 @@ func performTrialCall(sa *storedAuth) (map[string]any, error) {
 // Do NOT match bare Chinese "体验": CN free-tier is literally named
 // "CodeBuddy个人体验版" / "体验版" and must remain unclaimed-looking for Global
 // trial UI (A-18). Prefer English trial markers from live Global packs.
+//
+// Name matching alone is not enough: the live pack is named just "Bonus Pack",
+// identical to the daily 30-credit reward, so the name check never fired and the
+// panel offered a claim button on accounts that already had the pack (every
+// claim then answered code 14051 "has applied trial"). The pack is therefore
+// also recognised by SHAPE: 250 credits on a ~14-day cycle.
 func hasTrialPack(cr *creditsSummary) bool {
 	if cr == nil {
 		return false
 	}
 	for _, p := range cr.Packages {
+		if isTrialPackShape(p) {
+			return true
+		}
 		name := strings.ToLower(strings.TrimSpace(p.Name))
 		if name == "" {
 			continue
@@ -463,6 +472,38 @@ func hasTrialPack(cr *creditsSummary) bool {
 		}
 	}
 	return false
+}
+
+// isTrialPackShape recognises the one-time signup/expert pack by its numbers:
+// 250 credits valid for about two weeks. The name is useless ("Bonus Pack").
+func isTrialPackShape(p packageSummary) bool {
+	if p.Size != trialPackCredits {
+		return false
+	}
+	start, errStart := parsePackageTime(p.CycleStart)
+	end, errEnd := parsePackageTime(p.CycleEnd)
+	if errStart != nil || errEnd != nil {
+		return false
+	}
+	days := end.Sub(start).Hours() / 24
+	return days >= 10 && days <= 20
+}
+
+// trialPackCredits is the one-time pack's size (250 credits / ~14 days).
+const trialPackCredits = 250
+
+// parsePackageTime accepts the shapes the billing API returns.
+func parsePackageTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339, "2006-01-02T15:04:05"} {
+		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognised time %q", raw)
 }
 
 // isCreditsExhausted is the shared "耗尽" definition for panel + scheduler.

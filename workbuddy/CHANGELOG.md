@@ -114,6 +114,25 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Per-account Refresh and the one-time pack
+
+- The row `Refresh` button now refreshes everything the row shows. It used to
+  fetch credits only, so the Daily column and the CN check-in pill stayed stale,
+  and its hand-rolled cache write dropped the growth-day state. It now goes
+  through the same parallel fetch as the dashboard (credits + plan + check-in +
+  growth day, singleflight) and updates the cache as one entry.
+- The one-time 250-credit pack is now recognised by shape (250 credits on a
+  ~14-day cycle) instead of by name: the live pack is named just `Bonus Pack`,
+  identical to the daily 30-credit reward, so name matching never fired and the
+  panel offered a claim on accounts that already had it (every claim answered
+  code 14051). A claim answered with 14051 is also remembered in
+  `workbuddy-state.json`, which covers the case shape detection cannot: the pack
+  disappears from the credits list once its window ends, so "never got it" and
+  "got it and it expired" look identical.
+- Fix `loadState`, which copied only `realm` and `update`. `daily_report` and the
+  new trial memory were dropped by every reader, so their persistence looked
+  broken while the data was on disk the whole time.
+
 ### Daily report and check-in observability
 
 - Both scheduled runners now log, per account and in summary, so an operator can
