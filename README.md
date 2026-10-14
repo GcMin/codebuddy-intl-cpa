@@ -160,7 +160,9 @@ hit bills ~0.05 credit instead of ~0.62.
 
 For diagnosing transient prompt-cache misses the plugin can additionally record
 **content-free request hashes** and the actual outgoing conversation id. That is
-**off by default** — set `WB_CACHE_TRACE=1` in the plugin's environment to collect
+**off by default** — set `WB_CACHE_TRACE=1` in the plugin's environment, or flip
+**Hash tracing** on the Usage card (persisted in `workbuddy-state.json`, wins over
+the env default), to collect
 it, because the fingerprints otherwise dominate the accounting log (measured at
 99.4% of each line) and slow the usage view down. See
 [cache tracing](workbuddy/docs/cache-tracing.md) for the fields, the privacy limits, and the
@@ -330,7 +332,7 @@ Platform layout also works: `plugins/linux/amd64/workbuddy.so`.
 | Variable | Effect |
 | --- | --- |
 | `WORKBUDDY_DATA_DIR` | Where `workbuddy-state.json`, `session-affinity.json` and the usage logs live. Defaults to `.codebuddy_data` under the auth dir. |
-| `WB_CACHE_TRACE` | `1`/`true`/`yes`/`on` records content-free request fingerprints for prompt-cache investigations. **Off by default** — see [cache tracing](workbuddy/docs/cache-tracing.md). |
+| `WB_CACHE_TRACE` | `1`/`true`/`yes`/`on` records content-free request fingerprints for prompt-cache investigations. **Off by default** — the Usage card's **Hash tracing** toggle overrides this and persists across restarts. See [cache tracing](workbuddy/docs/cache-tracing.md). |
 | `WB_MANAGEMENT_KEY` | Fallback management key when the config does not set one. |
 | `WB_SELF_URL` | Base URL the plugin uses to trigger a host model-registry reload after Save. |
 | `USAGE_REPORT_URL`, `USAGE_REPORT_KEY` | Optional CPAMP usage import target and key. |

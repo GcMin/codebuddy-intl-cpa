@@ -1,9 +1,18 @@
 # Content-free cache tracing
 
-Cache tracing is **off by default** and turned on with `WB_CACHE_TRACE=1` in the
-plugin's environment. When enabled, the plugin records `cache_trace` in each new
+Cache tracing is **off by default**. Turn it on either way:
+
+- the Usage card's **Hash tracing** toggle (`GET`/`POST /cachetrace/config`),
+  which applies immediately to new requests and is persisted as `cache_trace`
+  in `workbuddy-state.json`; an explicit choice wins over the environment
+  default and survives plugin restarts; or
+- `WB_CACHE_TRACE=1` in the plugin's environment, the deployment-level default
+  used when no panel choice was made yet.
+
+When enabled, the plugin records `cache_trace` in each new
 executor accounting line in `.codebuddy_data/request-usage.jsonl`. Existing rows
-remain readable and have no trace. This is observability only: the plugin does not
+remain readable and have no trace. The panel flip applies to new requests only;
+rows already written keep whatever they had. This is observability only: the plugin does not
 change CID, model routing, request content, or billing. It does not retry a cache
 miss.
 
@@ -45,9 +54,12 @@ In **Usage CodeBuddy**, expand **Cache hash** below the cache read/write counts.
 It shows the hit ratio, outgoing CID, content-free hashes and failover attempt
 accounts/status. The previous loaded request with the same CID/model is compared
 for account changes, changed system/tools/options and leading message equality.
-Clear account filters to see cross-account neighbors. Records from before logging
-show “No hash”; comparisons are limited to the loaded records and 512-message
-hash coverage. A low-hit badge is an observation, not a root-cause verdict.
+Clear account filters to see cross-account neighbors. Records without a trace
+(the switch was off when they were written) show a muted `hash tracing off`
+label after the read/write counts — flip **Hash tracing** in the same card to
+collect fingerprints for new requests; comparisons are limited to the loaded
+records and 512-message hash coverage. A low-hit badge is an observation, not a
+root-cause verdict.
 
 ## Compare a miss
 

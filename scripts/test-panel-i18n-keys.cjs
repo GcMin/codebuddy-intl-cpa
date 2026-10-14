@@ -71,6 +71,8 @@ test('the toggle toasts compose into readable English', () => {
     ['每日奖励', '已关闭 ⏸', 'Daily bonus disabled ⏸'],
     ['自动签到', '已开启 ✅', 'Auto check-in enabled ✅'],
     ['自动签到', '已关闭 ⏸', 'Auto check-in disabled ⏸'],
+    ['哈希追踪', '已开启 ✅', 'Hash tracing enabled ✅'],
+    ['哈希追踪', '已关闭 ⏸', 'Hash tracing disabled ⏸'],
   ];
   for (const [left, right, expected] of cases) {
     const composed = `${table[left]}${table[right]}`;

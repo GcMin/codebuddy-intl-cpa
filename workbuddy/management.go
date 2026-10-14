@@ -156,6 +156,8 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/dailybonus", Description: "Manually light today's growth day for Global accounts (or one with auth_index) so each earns its 30-credit daily Bonus Pack. Idempotent: days already lit are skipped."},
 			{Method: http.MethodGet, Path: base + "/dailybonus/status", Description: "Last daily-reward run summary (per account: day, score, lit dates) + schedule and toggle."},
 			{Method: http.MethodPost, Path: base + "/dailybonus/config", Description: "Toggle the scheduled Global daily-reward run (body: {enabled: true/false})."},
+			{Method: http.MethodGet, Path: base + "/cachetrace/config", Description: "Cache-tracing switch: enabled, the WB_CACHE_TRACE default, and whether the persisted panel choice overrides it."},
+			{Method: http.MethodPost, Path: base + "/cachetrace/config", Description: "Enable/disable content-free request fingerprints at runtime (body: {enabled: true/false}); persisted in workbuddy-state.json and wins over WB_CACHE_TRACE."},
 			{Method: http.MethodGet, Path: base + "/usage", Description: "Per-request CodeBuddy usage log (credit/tokens). Query: auth_index, limit (default 100), from, to."},
 			{Method: http.MethodGet, Path: base + "/usage/summary", Description: "Per-account usage summary (last/today/all credit + requests)."},
 			{Method: http.MethodGet, Path: base + "/models/config", Description: "Model Manager catalog and realm-wide settings (defaults → realm). Query: realm, fetch_account_global, fetch_account_cn; reset=1&realm=... restores one realm and reloads host models."},
@@ -230,6 +232,15 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleDailyBonusStatus()))
 	case req.Method == http.MethodPost && path == base+"/dailybonus/config":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleDailyBonusConfig(req)))
+	case req.Method == http.MethodGet && path == base+"/cachetrace/config":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleCacheTraceStatus()))
+	case req.Method == http.MethodPost && path == base+"/cachetrace/config":
+		out := handleCacheTraceConfig(req)
+		status := http.StatusOK
+		if out["error"] != nil {
+			status = http.StatusBadRequest
+		}
+		return okEnvelope(mgmtJSONResponse(status, out))
 	case req.Method == http.MethodGet && path == base+"/usage":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUsageQuery(req)))
 	case req.Method == http.MethodGet && path == base+"/usage/summary":

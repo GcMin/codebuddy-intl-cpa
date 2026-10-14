@@ -46,7 +46,7 @@ test('changed prefixes, legacy records, filtered history and escaping are explic
   const out=ctx.usageCacheTraceCell(b,[a,b]);
   assert.match(out,/First changed message: 2/);assert.match(out,/Changed fields: tools_hash/);
   assert.match(out,/&lt;img/);assert.doesNotMatch(out,/<img/);
-  assert.match(ctx.usageCacheTraceCell({},[]),/No hash \(before logging\)/);
+  assert.match(ctx.usageCacheTraceCell({},[]),/· hash tracing off/);
   assert.match(ctx.usageCacheTraceCell(b,[b]),/not in loaded records/);
 });
 test('truncated lists do not assert full append-only history',()=>{

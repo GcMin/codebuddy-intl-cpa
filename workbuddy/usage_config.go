@@ -204,6 +204,9 @@ func configure(raw []byte) {
 	liveReload = nextLiveReload
 	liveReloadMu.Unlock()
 
+	// Cache tracing: explicit panel choice (workbuddy-state.json) > env default.
+	applyCacheTracePreference()
+
 	resolveUsageReport(cfgURL, cfgKey)
 	ensureScheduler()
 	if n := mmDropLegacyOverrides(); n > 0 {

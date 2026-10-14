@@ -524,6 +524,8 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
         <button type="button" class="ftag" data-range="custom" onclick="setUsageRange('custom',this)"><span data-i18n="自定义">自定义</span></button>
         <select id="usageAcct" onchange="usageParams.account=this.value;loadUsage()"></select>
         <span class="sp" id="usageRangeLabel"></span>
+        <span style="flex:1"></span>
+        <label class="toggle" title="记录请求内容哈希（仅诊断用：日志更大、用量查询更慢）；开启立即生效并持久化，仅影响新请求。" data-i18n-title="记录请求内容哈希（仅诊断用：日志更大、用量查询更慢）；开启立即生效并持久化，仅影响新请求。"><input type="checkbox" id="traceToggle" onchange="toggleTrace(this.checked)"> <span data-i18n="哈希追踪">哈希追踪</span></label>
       </div>
       <div class="tbl-wrap">
         <table class="utbl">
@@ -968,6 +970,8 @@ const PANEL_EN = {
   "总 Token": "Total tokens",
   "消耗积分": "Credit",
   "正在加载用量…": "Loading usage…",
+  "哈希追踪": "Hash tracing ",
+  "记录请求内容哈希（仅诊断用：日志更大、用量查询更慢）；开启立即生效并持久化，仅影响新请求。": "Record content-free request hashes (diagnostics only: larger log, slower usage queries); persists, applies to new requests.",
   "导入账号凭据 JSON": "Import Credential JSON",
   "关闭": "Close",
   "支持嵌套格式": "Accepts nested",
@@ -1121,7 +1125,7 @@ let panelLanguage = (()=>{
 const PANEL_ZH_NOTICES={
   "Long-context notice: above 272K input tokens, credits are 2×. Display only; does not change billing or the advertised API context limit.":"长上下文提示：输入超过 272K token 时积分为 2 倍。仅展示，不修改计费或 API 公布的上下文上限。",
   ">272K input: credits 2×":"输入 >272K：积分 2×",
-  "Cache hash":"缓存哈希","low hit":"低命中","No hash (before logging)":"无哈希（启用日志前）",
+  "Cache hash":"缓存哈希","low hit":"低命中","hash tracing off":"哈希追踪未开启",
   "Request ID":"请求 ID","Cache hit":"缓存命中","Body bytes / messages":"请求字节 / 消息数",
   "Attempt":"尝试","Previous same-session request":"同会话上一请求","Account changed":"账号切换",
   "yes":"是","no":"否","Changed fields":"变化字段","none":"无","Identical leading messages":"相同前缀消息数",
@@ -1129,7 +1133,8 @@ const PANEL_ZH_NOTICES={
   "History shortened or hash coverage incomplete":"历史缩短或哈希覆盖不完整",
   "Hash lists capped at 512 messages; no full-prefix verdict.":"哈希列表最多 512 条消息，不能判断完整前缀。",
   "Previous same-session request not in loaded records. Clear account filters or load a wider range.":"已加载记录中没有同会话上一请求。请清除账号筛选或扩大时间范围。",
-  "Hashes only, no prompt content. Low hit does not by itself prove the cause.":"仅哈希，不含提示词内容。低命中本身不能证明原因。"
+  "Hashes only, no prompt content. Low hit does not by itself prove the cause.":"仅哈希，不含提示词内容。低命中本身不能证明原因。",
+  "No fingerprint in this record: hash tracing was off when it was written. Enable hash tracing in the usage card; new requests then carry hashes.":"该记录没有指纹：写入时哈希追踪未开启。在用量卡片开启“哈希追踪”后，仅新请求会带有哈希。"
 };
 function tr(message){return panelLanguage==="en"?(PANEL_EN[message]??message):(PANEL_ZH_NOTICES[message]??message)}
 function translateStatic(root=document){
@@ -2328,7 +2333,7 @@ function usageTraceComparison(a,b){
 }
 function usageCacheTraceCell(r,recs){
   const t=r.cache_trace;
-  if(!t)return '<span class="muted">'+esc(tr("No hash (before logging)"))+'</span>';
+  if(!t)return '<span class="muted" title="'+esc(tr("No fingerprint in this record: hash tracing was off when it was written. Enable hash tracing in the usage card; new requests then carry hashes."))+'"> · '+esc(tr("hash tracing off"))+'</span>';
   const attempts=t.attempts||[], u=t.upstream||{};
   const ratio=Number(r.input_tokens)>0?Math.min(100,100*(Number(r.cache_read_tokens)||0)/Number(r.input_tokens)):0;
   const low=Number(r.input_tokens)>1000&&ratio<10;
@@ -2379,6 +2384,28 @@ function renderUsageError(message){
   const tbody=document.getElementById("usageBody");
   if(tbody)tbody.innerHTML=`${tr("<tr><td colspan=\"8\"><div class=\"usage-loading\">无法加载用量：")}${esc(message)}</div></td></tr>`;
 }
+// The hash-tracing switch lives on the plugin side and is persisted in
+// workbuddy-state.json, so the checkbox only mirrors /cachetrace/config.
+async function loadTraceStatus(){
+  try{
+    const d=await api("/cachetrace/config");
+    const el=document.getElementById("traceToggle");
+    if(el&&typeof d.enabled==="boolean")el.checked=d.enabled;
+  }catch(e){/* endpoint missing on older plugins; leave the checkbox untouched */}
+}
+async function toggleTrace(on){
+  const el=document.getElementById("traceToggle");
+  try{
+    const d=await api("/cachetrace/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:on})});
+    if(d.error)throw new Error(d.error);
+    if(el)el.checked=!!d.enabled;
+    toast(tr("哈希追踪")+(d.enabled?tr("已开启 ✅"):tr("已关闭 ⏸")),"ok");
+    loadUsage();
+  }catch(e){
+    if(el)el.checked=!on;
+    toast(tr("设置失败"),"err",e.message);
+  }
+}
 async function loadUsage(){
   const box=document.getElementById("usageSummaryBox");
   const tbody=document.getElementById("usageBody");
@@ -2422,6 +2449,7 @@ async function initUsage(){
       renderUsageAccounts();
     }catch(e){/* accounts endpoint may be down; keep All only */}
   }
+  loadTraceStatus();
   loadUsage();
   const vis=()=>!document.hidden;
   if(usageTimer)clearInterval(usageTimer);
