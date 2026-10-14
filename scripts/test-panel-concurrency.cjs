@@ -130,3 +130,36 @@ test('card header CSS lets the name truncate and pins the badge strip', () => {
   assert.match(css, /\.card h2 \.cname\{[^}]*text-overflow:ellipsis/);
   assert.match(css, /\.card h2 \.cbadges\{[^}]*flex:0 0 auto/);
 });
+
+// The badge is looked up in GET /concurrency, whose keys are gate keys
+// (realm:UID) — not auth_index. Shipping auth_index here made every badge sit
+// at 0/2 and the 5s poll overwrite the correct value from /accounts.
+test('badge uses the gate key from /accounts, never auth_index alone', () => {
+  const gate = 'global:95e6659d-2f49-45a1-8abb-be3f7cfd8c28';
+  const withKey = cardCtx.card({auth_index:'0ffe10a82d6cfd07', concurrency_key:gate, nickname:'P', plan:'trial',
+    region:'global', concurrency_current:1, concurrency_limit:2, concurrency_known:true});
+  assert.match(withKey, new RegExp('data-conc="' + gate.replace(/[:]/g, '\\:') + '"'));
+  assert.doesNotMatch(withKey, /data-conc="0ffe10a82d6cfd07"/);
+
+  // Legacy payload without the key still renders (falls back), so an older
+  // /accounts response cannot break the grid.
+  const withoutKey = cardCtx.card({auth_index:'0ffe10a82d6cfd07', nickname:'P', plan:'trial',
+    region:'global', concurrency_current:0, concurrency_limit:2, concurrency_known:true});
+  assert.match(withoutKey, /data-conc="0ffe10a82d6cfd07"/);
+});
+
+test('poll resolves the badge through the gate-keyed slots map', async () => {
+  const gate = 'global:95e6659d-2f49-45a1-8abb-be3f7cfd8c28';
+  const stub = domStub();
+  stub.badges = [(() => { const o = {idx: gate, textContent:'0/2', _cls:new Set(),
+      get classList(){return o;}, toggle(n,on){on?o._cls.add(n):o._cls.delete(n);},
+      getAttribute(){return o.idx;}}; return o; })()];
+  stub.api = (path) => { stub.apiCalls.push(path); return Promise.resolve({limit:2, slots:{[gate]:2}}); };
+  const ctx = {document: stub, api: stub.api.bind(stub), getKey: stub.getKey};
+  vm.createContext(ctx);
+  const src = html.slice(html.indexOf('async function refreshConcurrencyBadges'), html.indexOf('setInterval(refreshConcurrencyBadges'));
+  vm.runInContext(src + '; refreshConcurrencyBadges()', ctx);
+  await new Promise(r=>setTimeout(r,10));
+  assert.equal(stub.badges[0].textContent, '2/2');
+  assert.ok(stub.badges[0]._cls.has('full'));
+});

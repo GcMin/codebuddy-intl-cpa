@@ -1119,8 +1119,11 @@ function card(a){
   const refreshBtn=`<button class="sec" data-action="refresh" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"刷新积分\">刷新</button>")}`;
   // Live account concurrency: current/limit in-flight requests. Only render
   // when the backend reported it (known); legacy dashboards show no badge.
+  // data-conc must be the gate key (realm:UID) that GET /concurrency reports
+  // under — using auth_index here silently matched nothing and pinned every
+  // badge at 0/2 while the poll overwrote the correct value from /accounts.
   const concBadge=a.concurrency_known
-    ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
+    ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.concurrency_key||a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
     : "";
   const badges=(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
   const displayName=esc(a.nickname||a.label||a.name);
@@ -1147,6 +1150,7 @@ async function refreshConcurrencyBadges(){
     const limit=d&&d.limit, slots=(d&&d.slots)||{};
     document.querySelectorAll("[data-conc]").forEach(el=>{
       const idx=el.getAttribute("data-conc");
+      if(!idx) return; // forEach callback: skip unkeyed badges
       const cur=slots[idx]||0;
       el.textContent=`${cur}/${limit==null?"—":limit}`;
       el.classList.toggle("full",limit!=null&&cur>=limit);

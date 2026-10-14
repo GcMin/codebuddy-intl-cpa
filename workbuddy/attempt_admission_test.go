@@ -453,3 +453,37 @@ func TestConcurrentProbeSingleFlightAndNoQueue(t *testing.T) {
 		t.Fatal("idle gate leaked")
 	}
 }
+
+// The panel badge polls GET /concurrency and looks the account up by the key
+// that endpoint reports. That key is accountGateKey (realm:UID). A previous
+// build tagged the badge with auth_index instead, so the lookup never matched
+// and every badge sat at 0/2 while the poll overwrote the correct value that
+// /accounts had returned. Pin the two namespaces together.
+func TestConcurrencySnapshotKeyMatchesGateKeyNotAuthIndex(t *testing.T) {
+	resetChatSessions(t)
+	cands := exhaustedCandidates(t)
+	cand := cands[0]
+
+	release, err := admitCandidateAttempt(context.Background(), cand)
+	if err != nil || release == nil {
+		t.Fatalf("admit: %v", err)
+	}
+	defer release()
+
+	key := accountGateKey(cand)
+	if key == cand.AuthID {
+		t.Fatalf("gate key must not be the auth index: %q", key)
+	}
+	if want := cand.Auth.Account.UID; !strings.HasSuffix(key, want) || !strings.HasPrefix(key, accountRegion(cand.Auth)+":") {
+		t.Fatalf("gate key %q is not realm:UID (region=%q uid=%q)", key, accountRegion(cand.Auth), want)
+	}
+
+	snapshot := accountInFlightSnapshot()
+	if got := snapshot[key]; got != 1 {
+		t.Fatalf("snapshot[%q]=%d want 1 (keys=%v)", key, got, snapshot)
+	}
+	// The badge must not be able to find the slot under the auth index.
+	if _, ok := snapshot[cand.AuthID]; ok {
+		t.Fatalf("snapshot is also keyed by auth index %q; the two namespaces must stay distinct", cand.AuthID)
+	}
+}
