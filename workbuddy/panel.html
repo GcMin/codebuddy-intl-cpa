@@ -917,7 +917,8 @@ const PANEL_EN = {
   "报告已发送": "Report sent",
   "报告完成": "Report finished",
   "部分报告失败": "Some reports failed",
-  "全部已点亮": "All already lit",
+  "全部已点亮": "Nothing to report",
+  "先刷新以获取状态": "refresh first to load the current state",
   "跳过": "Skipped",
   "国内账号使用签到": "CN accounts use check-in",
   " 个已点亮": " lit",
@@ -1481,11 +1482,14 @@ function rowHTML(a){
   const t=acctView.today[a.auth_index]||{};
   let actionHTML;
   if((a.region||"cn")==="global"){
-    // Manual report, offered only while today is not lit yet. Once lit there is
-    // nothing to do: the beacon is day-idempotent and upstream answers
-    // "already-lit", so a button would only invite a pointless click.
-    const lit=!!(a.daily&&a.daily.lit);
-    const reportBtn=lit?"":`<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`;
+    // Manual report, offered only when we KNOW today is not lit. Not offered on
+    // a lit day (the beacon is day-idempotent and upstream answers "already-lit")
+    // and not offered without data either, where the Daily column already reads
+    // "—" and a button would contradict it.
+    const known=!!(a.daily&&typeof a.daily.lit==="boolean");
+    const reportBtn=(known&&!a.daily.lit)
+      ? `<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`
+      : "";
     actionHTML=reportBtn+(a.trial_claimed
       ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
       : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`);
@@ -1760,8 +1764,12 @@ async function reportNow(idx, btn){
 // reportAll sends the beacon for every account whose day is not lit yet. One
 // request: the plugin skips accounts that are already lit (cheap heatmap read).
 async function reportAll(btn){
-  const unlit=(lastAccounts||[]).filter(a=>(a.region||"cn")==="global"&&!(a.daily&&a.daily.lit));
-  if(!unlit.length){ toast(tr("全部已点亮"),"ok"); return; }
+  const unlit=(lastAccounts||[]).filter(a=>(a.region||"cn")==="global"&&a.daily&&a.daily.lit===false);
+  if(!unlit.length){
+    const unknown=(lastAccounts||[]).some(a=>(a.region||"cn")==="global"&&!a.daily);
+    toast(tr("全部已点亮"),"ok",unknown?tr("先刷新以获取状态"):"");
+    return;
+  }
   busy(btn,true);
   try{
     const d=await api("/dailybonus",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});

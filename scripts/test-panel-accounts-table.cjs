@@ -205,6 +205,12 @@ test('report button appears only for a Global account whose day is not lit', () 
   assert.match(unlit, /data-action="report"/);
   assert.match(unlit, /未点亮/);
 
+  // No data yet: the Daily column reads "-", so no button (it would contradict
+  // the column and invite a click that only re-reads the heatmap).
+  const unknown = rowHTML({...base});
+  assert.doesNotMatch(unknown, /data-action="report"/);
+  assert.match(unknown, /暂无报告记录/);
+
   const lit = rowHTML({...base, daily: {lit: true, score: 2}});
   assert.doesNotMatch(lit, /data-action="report"/);
   assert.match(lit, /已点亮/);
