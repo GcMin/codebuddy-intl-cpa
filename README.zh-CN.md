@@ -2,126 +2,239 @@
 
 简体中文 | [English](README.md)
 
-面向腾讯 **CodeBuddy 国际版（Global / Intl）账号**的 CLIProxyAPI（CPA）插件，提供积分管理、多账号登录、自动签到、国际账号每日奖励和用量记录。
-
-当前源码的账号管理面板已汉化，包括按钮、地区筛选、积分统计、请求记录、凭据导入、操作通知和管理密钥提示。产品名、模型名和配置字段保留原名；上游返回的错误详情按原文显示，便于排查。
+面向腾讯 **CodeBuddy 国际版（Global / Intl）账号**的 CLIProxyAPI（CPA）插件，包含其他 CPA 插件跳过的**国际账号每日积分奖励**。
 
 面板右上角可选择 **中文 / English**，切换立即生效，并保存在当前浏览器中。首次打开时根据浏览器语言选择。
 
-## 使用汉化版本
+> **关于命名。** 项目名是 `codebuddy-intl-cpa`，插件内部标识保留 `workbuddy`：文件名 `workbuddy.so`、认证类型 `workbuddy`、凭据文件 `workbuddy-<uid>.json`、配置路径 `plugins.configs.workbuddy`，发行包名也沿用该标识。这些是与宿主和现有凭据约定的名称，改名会导致已有安装和磁盘上的凭据失效。面向人阅读的部分（本 README、商店信息、插件元数据、面板、发行标题）统一使用 **CodeBuddy Intl CPA**。
 
-管理面板通过 Go 的 `go:embed` 编译进插件。**需要用当前源码重新编译、替换插件并重启 CPA，才能显示中文界面**。只修改 HTML 不会改变已安装的插件；插件商店已有的发行包也不会随本地修改自动更新。
+> **状态：** 已在生产环境运行。31 个 Go 源文件（约 13.7k 行）加 38 个测试文件，以及一个通过 `go:embed` 嵌入的 3,131 行管理面板。
 
-编译环境需要 Go 1.26 及相应平台的 C 编译器，并开启 CGO。
+---
 
-### Linux / macOS
+## 为什么用这个
+
+目前该服务商的其他 CPA 插件都是**国内优先**：它们把成长中心限制在国内版，假设这套接口在海外并不存在。这个假设是错的，结果是国际账号完全没有每日收入，只有每月 100 积分的免费额度。
+
+本插件做了相反的事：
+
+| | 其他 CPA 插件 | 本插件 |
+| --- | --- | --- |
+| 成长中心（`/v2/report`、热力图、连续天数） | 仅国内版 | **国内 + 国际** |
+| 国际账号每日积分奖励 | ✗ | ✅ **每日 30 积分** |
+| 429 / `code 6004` / 积分耗尽的切换重试 | 交给宿主 | **插件内按账号处理** |
+| 逐请求积分 / Token 记录 | ✗ | ✅ **JSONL + 面板** |
+| 按 realm 的模型目录与前缀 | 硬编码 | ✅ **模型管理** |
+
+---
+
+## 主要功能
+
+### 1. 国际账号每日奖励
+
+国际账号每个账号每天可获得 **30 积分**，无需桌面客户端。
+
+原理：客户端向 `POST /v2/report` 上报一个事件（`eventCode: chat_request_send`），成长中心就把当天计为活跃日。活跃日在 `GET /activity/growth/heatmap` 中表现为非零 `score`，次日起账号会收到一个 **30 积分的奖励包**（`TCACA_code_007_nzdH5h4Nl0`，平台奖励积分，有效期 30 天）。
+
+已在 **2026-09-28 → 2026-09-29** 用 7 个账号验证：仅靠上报点亮的 6 个国际账号都在次日上午收到了 30 积分奖励包，另有 1 个账号是通过客户端普通登录点亮的。验证方法见[自行验证](#自行验证)。
+
+插件按计划执行，并且**按账号按天幂等**——先读热力图，只上报尚未点亮的日期，因此多跑几次不会重复计数。
+
+| | |
+| --- | --- |
+| 计划 | 本地时间 `08:00 / 12:00 / 16:00 / 20:00`，走插件共用的调度 tick |
+| 配置 | `daily_bonus: true`（默认开启） |
+| 面板 | **每日奖励（国际）**开关，以及每行的**报告**按钮 |
+| 手动触发 | `POST /v0/management/plugins/workbuddy/dailybonus`（带 `{"auth_index":"…"}` 则只跑一个账号） |
+| 状态查询 | `GET /v0/management/plugins/workbuddy/dailybonus/status`——按账号返回日期、score、已点亮日期 |
+
+几点需要注意：
+
+- **"今天"以接口热力图为准**（取最后一个格子），不用本地时间，因此不涉及时区换算，中国时区的跨日也无需特殊处理。
+- **每天跑四次。** 已点亮的日期会跳过，多余的 tick 没有代价；某个 tick 失败（例如刚开机网络未就绪）由下一个补上。
+- **上报请求永不重试。** 该事件在上游按天幂等，但盲目重发会让当天计数翻倍（`score` 2 → 4）。失败的发送等下一个 tick 即可。
+- **仅国际账号。** 国内账号继续走签到流程，且国内成长中心在另一台主机（`copilot.tencent.com`）上。
+- **"全部报告"是限速串行，不是并发轰炸。** 批量按钮逐个账号处理，间隔 1.5 秒，与宿主自带上报脚本的节奏一致。并发轰炸正是之前 429 风暴的来源。
+- **每行按钮是诚实的。** 只有在确认当天未点亮时才提供**报告**；点亮后显示**已点亮**并禁用。尚无数据的账号显示 `—`，不会给出未经读取的结论。
+
+**额外收益：** 连续天数还会解锁阶梯奖励（`14 天` → +50 积分，`28 天` → +150 积分），叠加在每日额度之上。
+
+### 2. 国内账号每日签到
+
+国内账号保留自己的奖励路径：每日签到 **100 积分/天**，另有 500/月。开启 `checkin_auto` 时插件在本地时间 **09:00 / 21:00** 自动执行；面板提供每行的**签到**按钮和**全部签到**批量操作。签到按账号串行，两个浏览器标签页不会重复提交。
+
+### 3. 插件内账号切换与准入控制
+
+CPA 内置的冷却与重试只作用于宿主自身的执行器。`c-shared` 插件自己发上游请求，`429` / `code 6004` 不会到达宿主选择器，因此不会发生切换——请求直接失败。
+
+本插件维护按账号的冷却表，在返回错误前用另一个已启用账号重试**同一个请求**（`failover.go`、`retry.go`）。
+
+明确的积分耗尽（HTTP 402、code 14018、`Credits exhausted`）会在任何输出分块之前处理：在同 realm 内重试，并把被拒账号隔离到接口给出的重置时间，或 30 分钟。隔离是进程内的，重启即清除；它在 `lifecycle_auto:false` 下同样有效，不会禁用或删除认证文件。已输出部分内容、空的 HTTP 200 流、传输错误都会停止请求而不重放。切换账号可能导致替换账号上的提示缓存未命中；缓存是否共享随模型和后端而变。
+
+**准入控制。** 每个账号最多 **2 个进行中的请求**，跨模型并按宿主身份（UID + realm）去重。两个槽位都占用时，执行器立即尝试同 realm 的另一个已启用账号；若全部账号都忙，则快速失败，不发出付费的上游请求。**没有本地等待队列**。每个槽位预留后会重新检查隔离状态，因此并发请求不会继续发给刚被 429 拒绝的账号。面板显示的 `当前/上限` 徽标（如 `0/2`）直接来自该准入闸门。
+
+**会话软粘性。** 一个会话在槽位空闲时继续使用上次执行的账号，该账号忙时切到空闲的同级账号，并保留新账号，避免提示缓存被来回弹。粘性键由客户端凭据 + 稳定会话标识 + 模型 + realm 摘要而成；绑定有数量上限、1 小时过期，并持久化到 `session-affinity.json`，因此重启不会搬动会话。
+
+路由始终按会话进行：**面板没有"当前使用账号"这一项**，因为一个全局选择会泄漏到其他会话，并迫使不支持跨账号共享缓存的模型重写提示缓存。
+
+软 429/`code 6004` 隔离粒度是**账号 + 上游模型**；积分耗尽仍是账号级。当某模型的全部账号都在冷却时，请求可在 30 秒后探测其中一个软限流账号，每个账号同一时间只探测一个。新的拒绝会重置退避。插件不会探测已耗尽或已禁用账号、不跨 realm、也不重放部分输出/空响应/传输失败的请求。上游仍可能因 RPM、Token 用量或共享配额拒绝请求——准入控制无法保证上游容量。
+
+不同 CPA 进程的限额各自独立，因此生产与开发环境不要共用同一个账号。切换账号可能让 `gpt-6-sol`、`gpt-6.1-sol` 丢失提示缓存；账号限额并不等于缓存共享保证。
+
+### 4. 逐请求用量与积分记录
+
+流经插件的每个对话请求都会被记录：账号、模型、输入/输出/缓存 Token，以及从终端 SSE 分块取得的上游 `credit` 值。以 JSONL 追加保存在认证目录附近，约 50 MB 轮转（`request-usage-<YYYY-MM>.jsonl`，旧数据保留）。面板的 **CodeBuddy 用量记录**由此驱动。日志不记录任何凭据。
+
+这也是让缓存经济性变得可见的原因：一个 24k Token 的请求在完全命中缓存时约 0.05 积分，而不是约 0.62。
+
+为排查偶发的提示缓存未命中，插件还可额外记录**不含内容的请求哈希**和实际发出的会话 ID。字段、隐私边界和对比脚本见[缓存追踪](workbuddy/docs/cache-tracing.md)。按选项的摘要只标识*哪一个*已知设置发生变化，不记录其取值。`scripts/study-cache-misses.py` 会在活动与轮转日志上生成私密的、仅含元数据的报告，区分前缀丢失、账号变化、设置变化和正常的提示增长；它不会修改请求体，也不会重放缓存未命中。
+
+### 5. 模型管理（国际 / 国内）
+
+点击面板工具栏的 **⚙ 国际模型** 或 **⚙ 国内模型**，可编辑该 realm 的模型目录、前缀、自定义模型和可选回退。列表是上游目录（`/v2/enterprises/personal/models` ∪ `/v3/config`，使用 WorkBuddy 客户端 UA 获取）、插件静态目录与自定义条目的并集。免费（x0.00）模型固定在独立分组，其余按厂商分组、由便宜到贵排列。
+
+- **默认全选**，取消勾选即隐藏（`disabled_models`）。
+- **保存**作用于该 realm 的所有账号——按账号的覆盖层已退役，迁移时会移除既有的 `authOverride` 条目。
+- **保存/重置**会报告 CPA 是否在不重启的情况下重新加载了 `/v1/models`，并在重新获取期间保留未保存的草稿；关闭弹窗会丢弃草稿。
+- **测试**会通过所选账号发出一次真实的（付费）对话请求，显示实际服务的模型、Token、积分和上游错误码——以事实为准，而非目录声明。重新获取只用目录 GET，不消耗对话积分。
+- **回退**默认关闭，需要主动开启：缺失模型回退，以及硬错误重试回退（账号切换后仍 403/5xx，带 `X-WB-Fallback-From` 标记，因为响应可能来自不同模型）。
+
+取数账号下拉框显示的昵称与账号卡片一致，请求仍使用稳定的账号 ID。宿主 **Auth Files** 卡片属于 CPAMC 而非本插件，参见 [CPAMC 源码补丁](patches/README.md)。
+
+面板的更新控件显示当前运行版本与最新发行版本；被跳过的版本会与模型管理状态一并保存。
+
+### 6. Realm 识别与前缀
+
+插件同时接受两类签发域（`workbuddy.ai` **和** `codebuddy.ai`），因此国际凭据会路由到正确的计费与对话主机，而不会被送到国内网关（后者返回非 JSON 的 401，表现为 `parse failed: invalid character '<'`）。
+
+两个 realm 各有前缀，客户端可借此显式指定 realm：
+
+| Realm | 默认前缀 | 状态 |
+| --- | --- | --- |
+| 国内 | `cn/` | **默认开启**——`cn/glm-5.3` 会选中一个国内账号 |
+| 国际 | `cb/` | **默认关闭**——开启后可用 `cb/gpt-6.1-sol` |
+
+前缀在请求到达 CodeBuddy 之前被移除。带前缀的请求只在该 realm 内重试，即使 CPA 最初把请求路由到了别的账号。裸模型 ID 保持 CPA 原有路由行为——但如果两个 realm 都不加前缀，同时存在于两边的 ID（`glm-5.3`、`glm-5.2` 等）会产生歧义，面板会给出警告。前缀可在模型管理中修改，留空则使用默认值。
+
+### 7. 账号面板
+
+账号列表默认是**表格**，可切换到卡片。两种视图渲染同一份筛选后的列表，因此搜索、国内/国际/已耗尽筛选、排序和分页对两者同样有效。
+
+- 列：账号、realm 与套餐、实时并发、积分与进度条、每日报告状态、状态、今日请求数、操作。
+- **展开行**可看到该账号的每一个积分包，按最早到期排序，并带每个包的实时倒计时。
+- **每行操作是"报告"（国际）或"签到"（国内）。** 刷新移到了批量操作栏：勾选若干行后点**刷新数据**即刷新这些行。
+- 缺失的数据显示 `—`。面板不会声称一个尚未读取到的状态。
+
+### 8. 继承自原插件
+
+多账号 OAuth 登录、动态模型列表、对话执行器、国际账号一次性 250 积分专家体验包（14 天、每账号限一次）、积分生命周期（国内耗尽禁用 / 国际耗尽删除）、每日 22:00 的 Token 保活，以及带国内/国际筛选的积分面板。
+
+---
+
+## 自行验证
+
+用任意国际账号，上报前后对比：
 
 ```bash
-cd workbuddy
-CGO_ENABLED=1 go build -buildmode=c-shared -o workbuddy.so .
+# 1. 今天是否已点亮？（score > 0 表示已点亮）
+curl -s -X GET 'https://www.codebuddy.ai/activity/growth/heatmap' \
+  -H "Authorization: Bearer $TOKEN" -H "X-User-Id: $UID" -H "X-Domain: codebuddy.ai"
+
+# 2. 上报一个活跃事件
+curl -s -X POST 'https://www.codebuddy.ai/v2/report' \
+  -H "Authorization: Bearer $TOKEN" -H "X-User-Id: $UID" -H "X-Domain: codebuddy.ai" \
+  -H 'Content-Type: application/json' \
+  -d '[{"eventCode":"chat_request_send","timestamp":1700000000000,"mode":"craft",
+        "conversationId":"wb-<uuid>","requestId":"<uuid>","inputLength":12,
+        "requestModelId":"deepseek-v4-flash","requestModelName":"DeepSeek V4 Flash",
+        "presentAt":1700000000000,"rootRequestId":"<uuid>","parentConversationId":"wb-<uuid>",
+        "agentName":"default","agentType":"conversation","userId":"'"$UID"'"}]'
+
+# 3. 今天的热力图格子此时 score 为 2。
+# 4. 次日确认奖励包是否到账：
+curl -s -X POST 'https://www.codebuddy.ai/v2/billing/meter/get-user-resource' \
+  -H "Authorization: Bearer $TOKEN" -H "X-User-Id: $UID" -H "X-Domain: codebuddy.ai" \
+  -H 'Content-Type: application/json' -d '{}'
+#    → 查找 PackageCode 以 TCACA_code_007 开头的 "Bonus Pack"
 ```
 
-将生成的 `workbuddy.so` 放入 CPA 的插件目录，重启 CPA 后从管理中心打开 CodeBuddy 面板。如果仍显示旧界面，可强制刷新浏览器。
+奖励在次日中国时间凌晨到账。热力图对一次成功的上报有几秒钟延迟，请重新读取而不是直接判定失败。
 
-### Windows（PowerShell）
+插件会为每个账号输出一行日志（定时和手动执行都有），因此可以直接从宿主日志确认上报，而不必从积分反推：
 
-使用与 Go 架构匹配的 MinGW C 编译器，并确保 `go` 和 `gcc` 已加入 PATH：
-
-```powershell
-cd workbuddy
-$env:CGO_ENABLED = '1'
-go build -buildmode=c-shared -o workbuddy.dll .
+```
+[workbuddy] daily-report: auth=… day=… lit=… score=… status=reported|already-lit|failed|skipped
+[workbuddy] checkin: auth=… status=checked|already|unsupported|inactive|failed
 ```
 
-将生成的 `workbuddy.dll` 放入 CPA 的插件目录，重启 CPA 后打开 CodeBuddy 面板。共享库需要与 CPA 的运行平台和架构匹配。
+---
 
-如尚未启用插件，在 CPA 配置中添加：
+## 安装
+
+### 通过插件源安装（推荐）
+
+管理中心 → **配置面板 → 高级 → 第三方插件源**，填入以下任一地址：
+
+```
+https://github.com/zidanefaqih/codebuddy-intl-cpa/releases/latest/download/registry.json
+https://raw.githubusercontent.com/zidanefaqih/codebuddy-intl-cpa/main/registry.json
+```
+
+随发行包附带的副本由 CI 打标，始终对应最新发布的版本；`main` 分支的副本也会在发布时同步更新。
+
+或在宿主配置中启用（插件系统默认关闭）：
 
 ```yaml
 plugins:
   enabled: true
+  store-sources:
+    - https://raw.githubusercontent.com/zidanefaqih/codebuddy-intl-cpa/main/registry.json
 ```
 
-面板也可通过 CPA 服务下的 `/v0/management/plugins/workbuddy/panel` 路径访问。独立打开时输入 CPA 的**管理密钥**；从 CPA 主面板打开时会自动获取密钥。
+> ⚠️ **自行编译的情况：** 通过商店安装会把版本记录在 `store:` 下，宿主随后会移除该插件的其他库文件，包括手工编译的 `.so`。请另开一个宿主或容器来测试商店安装路径。
 
-## 主要功能
+### 手动安装
 
-### 国际账号每日奖励
+```bash
+# linux/amd64
+unzip workbuddy_<version>_linux_amd64.zip     # 压缩包根目录即 workbuddy.so
+cp workbuddy.so /path/to/cliproxyapi/plugins/
+```
 
-插件向成长中心上报活跃事件，点亮当天的活跃记录。按项目已有验证，国际账号可在次日获得 **30 积分奖励包**，有效期 30 天。
+也支持按平台分目录：`plugins/linux/amd64/workbuddy.so`。
 
-- 默认开启 `daily_bonus`，在服务所在环境的本地时间 `08:00 / 12:00 / 16:00 / 20:00` 运行。
-- 每次先读取活跃热力图，已点亮的日期会跳过，避免重复上报。
-- 日期以接口热力图为准；奖励次日到账，不是点击后立即到账。
-- 可在面板的“每日奖励（国际）”开关中启用或关闭。
-- 手动触发接口：`POST /v0/management/plugins/workbuddy/dailybonus`。
-- 状态查询接口：`GET /v0/management/plugins/workbuddy/dailybonus/status`。
+---
 
-国内账号使用每日签到流程。国际账号的“领取专家体验包”是另一项一次性权益：**250 积分，有效期 14 天，每个账号限领一次**。
+## 兼容性
 
-### 多账号切换与限流重试
-
-遇到上游 `429` 或 `code 6004` 时，插件会记录账号冷却时间，并尝试使用其他已启用账号发送同一请求。面板可选择当前使用的账号。
-
-### 请求用量记录
-
-记录账号、模型、输入/输出/缓存 Token 和上游返回的积分消耗值。数据以 JSONL 保存在认证目录附近，文件名为 `request-usage-<YYYY-MM>.jsonl`，约 50 MB 时轮转。
-
-面板支持今天、昨天、近 7 天、自定义日期和账号筛选。表格最多显示当前查询的 100 条记录；底部统计针对已显示记录，顶部汇总使用接口返回的总计。日志不记录账号凭据。
-
-### 模型与国际账号路由
-
-插件提供动态模型列表和额外模型注册，并识别 `workbuddy.ai`、`codebuddy.ai` 两类国际账号域名，以选择对应的聊天和计费服务。具体模型以当前源码和上游实际可用情况为准。
-
-### 积分生命周期管理
-
-默认启用 `lifecycle_auto`：国内账号积分耗尽后自动禁用，签到恢复积分后可重新启用；国际账号积分耗尽后自动删除。可在插件配置中调整。
-
-## 面板操作
-
-| 操作 | 作用 |
+| | |
 | --- | --- |
-| 导入凭据 | 粘贴嵌套或扁平结构的账号 JSON 并保存 |
-| 刷新数据 | 重新获取全部账号的数据 |
-| 全部签到 | 对需要签到的国内账号执行签到 |
-| 全部领取 | 对尚未领取体验包的国际账号尝试领取 |
-| 自动签到（国内） | 每日 `09:00 / 21:00` 自动签到 |
-| 每日奖励（国际） | 定时上报活跃事件，获取次日积分奖励 |
-| 选择账号 | 指定当前使用的账号 |
-| 刷新 | 刷新单个账号的积分 |
+| 最低宿主版本 | CLIProxyAPI 7.2.30（编译所用 SDK）；已在 7.2.145 及当前宿主版本上验证 |
+| 构建目标 | linux/amd64、linux/arm64、darwin/amd64、darwin/arm64、windows/amd64、windows/arm64 |
+| 插件标识 | `workbuddy` |
+| Go | 1.26 |
 
-“国内 / 国际 / 已耗尽”筛选会同步更新积分汇总。积分总额度可能随签到奖励增加，已用积分表示实际消耗。
+### 已知限制：Intel Mac
 
-## 配置说明
+CPA 插件是加载**进 Go 宿主进程**的 Go 共享库，而上游 Go 在 **darwin/amd64** 上不支持这种组合。在该平台上，运行时把当前 goroutine 放在一个固定的 TLS 槽位（`0x30(GS)`），宿主与插件会共用它；宿主可能读到插件的运行时状态并以 `fatal error: bad sweepgen in refill` 中止。参见 [golang/go#40131](https://github.com/golang/go/issues/40131) 与 [#38692](https://github.com/golang/go/issues/38692)，两者目前仍处于开启状态。
 
-配置字段名保留英文，在 `plugins.configs.workbuddy` 下设置。
+插件已让加载期不产生任何 goroutine 和定时器以避免干扰，但底层冲突位于 Go 运行时，无法从插件侧消除。
 
-| 字段 | 说明 |
-| --- | --- |
-| `checkin_auto` | 国内账号自动签到，默认开启 |
-| `daily_bonus` | 国际账号每日奖励，默认开启 |
-| `lifecycle_auto` | 积分耗尽后的自动禁用/删除，默认开启 |
-| `token_keepalive` | 每日 `22:00` 刷新访问令牌，默认开启 |
-| `scheduler_mode` | `off` 使用宿主调度；`credits` 优先选择剩余积分最多的账号 |
-| `models` | 可选模型列表，可设置 `id`、`name`、`alias`、`context`、`max_tokens`、`enabled`、`reasoning` |
-| `usage_report_url` | 可选的 CPAMP 用量导入地址 |
-| `usage_report_key` | 可选的 CPAMP 管理密钥 |
+- **Apple Silicon（darwin/arm64）、Linux、Windows 不受影响**——这些平台的运行时使用各自独立的 TLS。
+- 在 **Intel Mac** 上，建议把 CPA 跑在容器里（linux/amd64），而不要原生加载插件。
 
-当 `scheduler_mode: off` 且 `lifecycle_auto: false` 时，宿主仍可能选中积分耗尽的账号。可开启生命周期管理，或使用 `scheduler_mode: credits`。
-
-## 兼容性与项目标识
-
-- 最低宿主版本：CLIProxyAPI 7.2.30；原项目记录的验证版本为 7.2.145。
-- 插件内部标识：`workbuddy`。
-- 凭据文件名：`workbuddy-<uid>.json`。
-- 配置路径：`plugins.configs.workbuddy`。
-
-这些标识是与宿主和现有凭据约定的名称，汉化不修改它们。
+---
 
 ## 安全与致谢
 
 CPA 插件作为原生共享库在宿主进程内运行，拥有宿主可访问的文件、网络和凭据权限。请使用可信源码，并核验发行包的 SHA-256 校验值。
 
-原始执行器和账号提供方实现来自 `Sliverkiss/cpa-plugin`，其基础来自 `lovingfish` 的 `workbuddy`。本项目在此基础上增加了国际账号每日奖励、限流切换、请求用量记录和国际账号域名处理等功能。
+发行包附带校验和（`checksums.txt`，SHA-256），由 GitHub Actions 从打标的提交构建，因此发布的二进制与仓库源码一致。
 
-许可证：MIT，见 [LICENSE](LICENSE)。更多开发资料见 [开发指南](workbuddy/docs/development.md)。
+本插件除被授予的账号凭据外不保存任何机密，也不会把 Token 内容打印到日志或面板。
+
+原始执行器和账号提供方实现来自 `Sliverkiss/cpa-plugin`（MIT，已在 GitHub 上删除），其基础来自 `lovingfish` 的 `workbuddy`。感谢两位作者——本项目之所以存在，是因为那些工作曾被公开。
+
+其余部分均为本仓库自身的工作：429 与积分耗尽切换、准入控制与会话粘性、逐请求用量/积分记录、模型管理、国际版 realm 处理，以及国际账号每日奖励引擎。
+
+许可证：MIT，见 [LICENSE](LICENSE)。更多开发资料见[开发指南](workbuddy/docs/development.md)。

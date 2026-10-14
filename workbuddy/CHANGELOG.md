@@ -2,6 +2,21 @@
 
 ## 0.9.7 (unreleased)
 
+### English translation table, and a documentation pass
+
+- The panel's English table had 14 duplicate keys. A duplicate key in a JS object
+  literal is not an error — the last one wins — so `"每日奖励"` was silently
+  reduced from `"Daily bonus "` to `"daily bonuses"` and the toggle toast read
+  **"daily bonesenabled ✅"**. The duplicates are gone and
+  `scripts/test-panel-i18n-keys.cjs` fails on any duplicate key, plus on the
+  fragment-concatenated toasts that the bug corrupted.
+- README rewritten for both languages. The English one still counted 46 Go files
+  and a 1,061-line panel, called Model Manager unreleased, and described the CN
+  prefix as hardcoded; the Chinese one still documented the removed "select
+  account" button and the removed `scheduler_mode` config key. Both now describe
+  the shipping panel (table view, per-row Report, Model Manager, per-realm
+  prefixes) and state the darwin/amd64 limitation.
+
 ### Model Manager (Global / CN)
 
 - New panel popup per realm — ⚙ Global Models / ⚙ CN Models in the toolbar.
