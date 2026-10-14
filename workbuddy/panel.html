@@ -911,6 +911,13 @@ const PANEL_EN = {
   "暂无报告记录": "No report record yet",
   "报告失败": "Report failed",
   "报告": "Report",
+  "刷新积分": "Refresh credits",
+  "立即发送 report；奖励今晚到账": "Send the report now; the bonus lands tonight",
+  "今日已点亮，奖励今晚到账": "Already lit today; the bonus lands tonight",
+  "已点亮": "Lit",
+  " 个跳过": " skipped",
+  "全部报告": "Report all",
+
   "全部报告": "Report all",
   "立即发送 report；奖励今晚到账": "Send the report now; the bonus lands tonight",
   "为今天还没点亮的国际账号立即发送 report；已点亮会跳过": "Send the report now for Global accounts whose day is not lit yet; already-lit ones are skipped",
@@ -924,7 +931,6 @@ const PANEL_EN = {
   " 个已点亮": " lit",
   " 个失败": " failed",
   "奖励今晚到账": "bonus lands tonight",
-  "已点亮": "Lit",
   "未点亮": "Not lit",
   "上次点亮 ": "last lit ",
   "尚未点亮": "not lit yet",
@@ -1299,7 +1305,6 @@ function bindCardActions(root){
       const idx=ev.currentTarget.dataset.authIndex;
       if(act==="checkin") checkin(idx, ev.currentTarget);
       else if(act==="claim") claimTrial(idx, ev.currentTarget);
-      else if(act==="refresh") refreshCredits(idx, ev.currentTarget);
       else if(act==="report") reportNow(idx, ev.currentTarget);
     });
   });
@@ -1327,7 +1332,12 @@ function card(a){
     const btnDisabled=checked?" disabled=\"disabled\"":"";
     actionHTML=`<button class="${btnClass}" data-action="checkin" data-auth-index="${esc(a.auth_index)}"${btnDisabled}>${btnText}</button>`;
   }
-  const refreshBtn=`<button class="sec" data-action="refresh" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"刷新积分\">刷新</button>")}`;
+  // Card view mirrors the table: report/check-in only, no per-card refresh.
+  const reportBtn=(a.region||"cn")==="global"
+    ? ((a.daily&&a.daily.lit)
+        ? tr("<button class=\"done\" disabled=\"disabled\">已点亮</button>")
+        : `<button class="sec" data-action="report" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"立即发送 report；奖励今晚到账\">报告</button>")}`)
+    : "";
   // Live account concurrency: current/limit in-flight requests. Only render
   // when the backend reported it (known); legacy dashboards show no badge.
   // data-conc must be the gate key (realm:UID) that GET /concurrency reports
@@ -1343,7 +1353,7 @@ function card(a){
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
   ${progressHTML(cr)}
   ${a.error?`${tr("<div class=\"row\"><span class=\"k\">错误</span><span class=\"v err\">")}${esc(a.error)}</span></div>`:""}
-  <div class="actions">${refreshBtn}${actionHTML}</div>
+  <div class="actions">${reportBtn}${actionHTML}</div>
   </div>`;
 }
 // -----------------------------------------------------------------------------
@@ -1480,19 +1490,19 @@ function rowHTML(a){
   const picked=acctView.picked.has(a.auth_index)?"picked":"";
   const isOpen=acctView.expanded.has(a.auth_index);
   const t=acctView.today[a.auth_index]||{};
+  // Row actions mirror the daily mechanism: Global reports, CN checks in. The
+  // per-row Refresh is gone — refreshing is a bulk action (select rows, then
+  // Refresh in the selection bar), so the row keeps only what changes the
+  // account's state today.
   let actionHTML;
   if((a.region||"cn")==="global"){
-    // Manual report, offered only when we KNOW today is not lit. Not offered on
-    // a lit day (the beacon is day-idempotent and upstream answers "already-lit")
-    // and not offered without data either, where the Daily column already reads
-    // "—" and a button would contradict it.
-    const known=!!(a.daily&&typeof a.daily.lit==="boolean");
-    const reportBtn=(known&&!a.daily.lit)
-      ? `<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`
-      : "";
-    actionHTML=reportBtn+(a.trial_claimed
-      ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
-      : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`);
+    const lit=!!(a.daily&&a.daily.lit);
+    actionHTML=(lit
+      ? tr("<button class=\"mini-btn\" disabled=\"disabled\" title=\"今日已点亮，奖励今晚到账\">已点亮</button>")
+      : `<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`)
+      +(a.trial_claimed
+        ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
+        : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`);
   }else{
     const ci=a.checkin||{};
     actionHTML=ci.today_checked_in
@@ -1508,7 +1518,7 @@ function rowHTML(a){
     <td class="daily"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
     <td><span class="badge ${st.cls}">${st.label}</span></td>
     <td class="num">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
-    <td class="act"><button type="button" class="mini-btn" data-action="refresh" data-auth-index="${esc(a.auth_index)}">&#8635; ${tr("刷新")}</button> ${actionHTML}</td>
+    <td class="act">${actionHTML}</td>
   </tr>`;
 }
 
@@ -1761,29 +1771,50 @@ async function reportNow(idx, btn){
     busy(btn,false);
   }
 }
-// reportAll sends the beacon for every account whose day is not lit yet. One
-// request: the plugin skips accounts that are already lit (cheap heatmap read).
+// Delay between accounts in the sequential report. The host's own report script
+// (report-codebuddy-daily.py) paces its 17 accounts with time.sleep(1) and has
+// been reliable, so 1.5s keeps that proven spacing with a little headroom for
+// the extra browser round-trip. It is deliberately NOT a parallel burst: the
+// gateway is shared, and a burst is what produced the 429 storms earlier.
+const REPORT_ALL_GAP_MS = 1500;
+
+// reportAll walks the accounts ONE AT A TIME, oldest-first, with a pause between
+// them, and shows progress on the button. Deliberately not a single fan-out
+// request: that hits every account at once.
 async function reportAll(btn){
-  const unlit=(lastAccounts||[]).filter(a=>(a.region||"cn")==="global"&&a.daily&&a.daily.lit===false);
-  if(!unlit.length){
+  const targets=(lastAccounts||[]).filter(a=>(a.region||"cn")==="global"&&!(a.daily&&a.daily.lit));
+  if(!targets.length){
     const unknown=(lastAccounts||[]).some(a=>(a.region||"cn")==="global"&&!a.daily);
     toast(tr("全部已点亮"),"ok",unknown?tr("先刷新以获取状态"):"");
     return;
   }
-  busy(btn,true);
-  try{
-    const d=await api("/dailybonus",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-    const rs=d.results||[];
-    const failed=rs.filter(r=>r.status==="failed").length;
-    const lit=rs.filter(r=>r.lit).length;
-    toast(failed?tr("部分报告失败"):tr("报告完成"), failed?"warn":"ok",
-      lit+tr(" 个已点亮")+(failed?tr(" · ")+failed+tr(" 个失败"):""));
-    await load(false);
-  }catch(e){
-    toast(tr("报告失败"),"err",e.message||String(e));
-  }finally{
-    busy(btn,false);
+  const label=btn?btn.innerHTML:"";
+  let lit=0, failed=0, skipped=0, done=0;
+  if(btn) btn.disabled=true;
+  const setLabel=t=>{ if(btn) btn.innerHTML=t; };
+  for(const a of targets){
+    done++;
+    setLabel("&#9873; "+done+"/"+targets.length);
+    try{
+      const d=await api("/dailybonus",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({auth_index:a.auth_index})});
+      const r=(d.results||[])[0]||{};
+      if(r.lit) lit++;
+      else if(r.status==="failed") failed++;
+      else skipped++;
+      // Reflect each result immediately so the row updates as the walk proceeds.
+      if(r.lit) a.daily={...(a.daily||{}),lit:true,score:r.score||0,day:r.day,status:r.status||"already-lit"};
+      else if(r.status==="failed") a.daily={...(a.daily||{}),lit:false,status:"failed",detail:r.detail||""};
+      renderAccounts();
+    }catch(e){
+      failed++;
+    }
+    // Pause before the next account (skip the wait after the last one).
+    if(done<targets.length) await new Promise(r=>setTimeout(r,REPORT_ALL_GAP_MS));
   }
+  if(btn){ btn.disabled=false; btn.innerHTML=label; }
+  toast(failed?tr("部分报告失败"):tr("报告完成"), failed?"warn":"ok",
+    lit+tr(" 个已点亮")+(skipped?tr(" · ")+skipped+tr(" 个跳过"):"")+(failed?tr(" · ")+failed+tr(" 个失败"):""));
+  await load(false);
 }
 function updateAccountViews(a){
   updateOneRow(a);
@@ -2077,35 +2108,6 @@ async function checkin(idx, btn){
     await load(false);
   }catch(e){
     toast(tr("签到请求失败"),"err",e.message);
-    busy(btn,false);
-  }
-}
-async function refreshCredits(idx, btn){
-  busy(btn,true);
-  try{
-    const d=await api(`/credits?auth_index=${encodeURIComponent(idx)}`);
-    const acct=(d.accounts||[])[0]||d;
-    if(d.error||acct&&acct.error){
-      toast(tr("刷新失败"),"err",d.error||(acct&&acct.error)||tr("未知错误"));
-      busy(btn,false);
-      return;
-    }
-    // Update local state and re-render this card.
-    const a=(lastAccounts||[]).find(x=>x.auth_index===idx);
-    if(a){
-      if(acct.credits) a.credits=acct.credits;
-      if(acct.exhausted!=null) a.exhausted=acct.exhausted;
-      if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
-      if(acct.plan) a.plan=acct.plan;
-      if(acct.error) a.error=acct.error; else a.error="";
-      updateAccountViews(a);
-    }
-    const remain=acct&&acct.credits?acct.credits.total_remain:"?";
-    const who=acct&&acct.nickname?acct.nickname:idx;
-    toast(tr("积分已刷新"),"ok",who+tr(" · 剩余积分 ")+remain);
-  }catch(e){
-    toast(tr("刷新失败"),"err",e.message||String(e));
-  }finally{
     busy(btn,false);
   }
 }

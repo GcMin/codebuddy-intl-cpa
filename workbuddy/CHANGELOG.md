@@ -114,6 +114,24 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Row actions: report instead of refresh, and a paced Report all
+
+- The per-row `Refresh` button is gone; a Global row now offers `Report` (or a
+  disabled `Lit` once the day is lit), which is the only action that changes the
+  account's state today. Refreshing moved to the selection bar (`Refresh credits`)
+  for the rows you tick, so the row keeps one action and the label stays honest.
+- `Report all` walks the accounts **one at a time with a 1.5s pause**, showing
+  `n/total` on the button, and skips any account already lit. It used to send a
+  single request that hit every account at once; a burst is what produced the
+  429 storms. The host's own report script paces its 17 accounts with a 1s sleep,
+  so 1.5s keeps that proven spacing with headroom for the browser round-trip.
+  Each result is applied to its row immediately, so the table updates as the walk
+  proceeds.
+- `scripts/check-report-all-pacing.mjs` runs the real panel in headless Chrome
+  with four unlit accounts and asserts the requests arrive serially (never more
+  than one in flight), in order, one per account, with a real pause between them.
+  Verified it fails on the previous fan-out implementation.
+
 ### Per-account Refresh and the one-time pack
 
 - The row `Refresh` button now refreshes everything the row shows. It used to

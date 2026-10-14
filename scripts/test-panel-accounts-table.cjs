@@ -195,9 +195,10 @@ test('detailHTML says so explicitly when there is no package data', () => {
 });
 
 // ---- manual report button ------------------------------------------------------
-// Offered only while the day is not lit: the beacon is day-idempotent and
-// upstream answers "already-lit", so a button on a lit account is a dead click.
-test('report button appears only for a Global account whose day is not lit', () => {
+// The row keeps only what changes today's state: Report for Global, check-in for
+// CN. Per-row Refresh is gone (refreshing is a bulk action on selected rows), and
+// a lit day shows a disabled "Lit" button instead of a pointless Report.
+test('Global rows show Report while unlit and a disabled Lit button once lit', () => {
   const {rowHTML} = ctx;
   const base = {auth_index: 'a1', nickname: 'G', uid: 'u', region: 'global', plan: 'trial'};
 
@@ -205,26 +206,37 @@ test('report button appears only for a Global account whose day is not lit', () 
   assert.match(unlit, /data-action="report"/);
   assert.match(unlit, /未点亮/);
 
-  // No data yet: the Daily column reads "-", so no button (it would contradict
-  // the column and invite a click that only re-reads the heatmap).
-  const unknown = rowHTML({...base});
-  assert.doesNotMatch(unknown, /data-action="report"/);
-  assert.match(unknown, /暂无报告记录/);
-
   const lit = rowHTML({...base, daily: {lit: true, score: 2}});
-  assert.doesNotMatch(lit, /data-action="report"/);
-  assert.match(lit, /已点亮/);
+  assert.doesNotMatch(lit, /data-action="report"/);   // nothing to do
+  assert.match(lit, /已点亮/);                          // disabled state instead
+  assert.match(lit, /disabled/);
 
   // A failed attempt that is still unlit keeps the button (retry is meaningful).
   const failed = rowHTML({...base, daily: {lit: false, status: 'failed', detail: 'heatmap: timeout'}});
   assert.match(failed, /data-action="report"/);
   assert.match(failed, /报告失败/);
 
+  // Unknown state: report is still offered (it is idempotent and reads the
+  // heatmap first), so an operator can act without refreshing first.
+  const unknown = rowHTML({...base});
+  assert.match(unknown, /data-action="report"/);
+  assert.match(unknown, /暂无报告记录/);
+
   // CN never gets the report button; its reward is check-in.
   const cn = rowHTML({auth_index: 'c1', nickname: 'C', uid: 'u', region: 'cn',
     checkin: {active: true, today_checked_in: false, streak_days: 3}});
   assert.doesNotMatch(cn, /data-action="report"/);
   assert.match(cn, /data-action="checkin"/);
+});
+
+test('rows no longer carry a per-row refresh action', () => {
+  const {rowHTML} = ctx;
+  const global = rowHTML({auth_index: 'a1', nickname: 'G', uid: 'u', region: 'global',
+    daily: {lit: false, status: 'not-lit'}, credits: {total_remain: 1, total_size: 2}});
+  const cn = rowHTML({auth_index: 'c1', nickname: 'C', uid: 'u', region: 'cn',
+    checkin: {active: true, today_checked_in: false}});
+  assert.doesNotMatch(global, /data-action="refresh"/);
+  assert.doesNotMatch(cn, /data-action="refresh"/);
 });
 
 test('a failed report shows the reason, not a bare "not reported"', () => {
