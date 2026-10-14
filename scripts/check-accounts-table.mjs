@@ -47,7 +47,14 @@ for (const [idx, a] of Object.entries(byIndex)) {
     credits: a.credits, checkin: a.checkin, exhausted: a.exhausted, trial_claimed: a.trial_claimed}]};
 }
 const light = {accounts: (accounts.accounts || []).map(a => {
-  const c = {...a}; delete c.credits; return c;
+  const c = {...a}; delete c.credits;
+  // Put the widest realistic content on every Global row: a long streak and a
+  // long nickname. Without them the table fits and a wrap regression hides.
+  if (c.region === 'global') {
+    c.nickname = (c.nickname || '') + '-longnicknamesuffix';
+    c.daily = {...(c.daily || {}), lit: true, score: 2, lit_days: Array.from({length: 30}, (_, i) => `2026-09-${String(i+1).padStart(2,'0')}`)};
+  }
+  return c;
 })};
 
 const panel = readFileSync(join(root, 'workbuddy', 'panel.html'), 'utf8');
@@ -65,6 +72,8 @@ window.fetch=function(url){
   return Promise.resolve({status:200,ok:true,json:function(){return Promise.resolve(body);},text:function(){return Promise.resolve(JSON.stringify(body));}});
 };
 try{ sessionStorage.setItem('workbuddy-mgmt-key','e2e'); }catch(e){}
+// English, like the operator's panel: a leaked Chinese source string must fail.
+try{ localStorage.setItem('workbuddy-panel-language','en'); }catch(e){}
 </script>`;
 
 const probe = `<script>
@@ -134,6 +143,22 @@ window.addEventListener('load',()=>{setTimeout(()=>{
   setView('table');
   out.backToTable={rows:rows().length};
 
+  // Language leak + row uniformity.
+  const CJK=/[\u3400-\u9fff]/;
+  out.language=document.documentElement.getAttribute('data-lang')||panelLanguage;
+  out.cjkInRows=[...document.querySelectorAll('#rows tr.acct-row')].map(r=>{
+    const txt=r.textContent.replace(/\s+/g,' ').trim();
+    return CJK.test(txt)?txt.slice(0,60):null;
+  }).filter(Boolean);
+  out.rowHeights=[...new Set([...document.querySelectorAll('#rows tr.acct-row')].map(r=>Math.round(r.getBoundingClientRect().height)))];
+  const tw=document.querySelector('.tbl-wrap'), tb=document.querySelector('.acct-table');
+  out.tableWidth={wrap:tw.clientWidth, table:tb.scrollWidth, inner:window.innerWidth};
+  out.colWidths=[...document.querySelectorAll('.acct-table thead th')].map(th=>Math.round(th.getBoundingClientRect().width));
+  out.badgeWrap=[...document.querySelectorAll('#rows tr.acct-row')].filter(r=>{
+    const tops=[...r.querySelectorAll('td:nth-child(3) .badge')].map(b=>Math.round(b.getBoundingClientRect().top));
+    return new Set(tops).size>1;
+  }).length;
+
   const pre=document.createElement('pre'); pre.id='probe'; pre.textContent=JSON.stringify(out,null,1);
   document.body.appendChild(pre);
 },900)});
@@ -143,7 +168,7 @@ const dir = mkdtempSync(join(tmpdir(), 'acct-table-'));
 const file = join(dir, 'e2e.html');
 writeFileSync(file, panel.replace('<script>', stub + '<script>', 1).replace('</body>', probe + '</body>'));
 
-const dom = execFileSync(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--window-size=1700,1200',
+const dom = execFileSync(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--window-size=1000,1200',  // narrow, like the panel inside the CPA iframe
   '--virtual-time-budget=9000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore']});
 
 const m = dom.match(/<pre id="probe">([\s\S]*?)<\/pre>/);
@@ -152,6 +177,8 @@ if (!m) {
   process.exit(1);
 }
 const out = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'"));
+
+if (process.env.DEBUG_WIDTH) console.log('tableWidth', JSON.stringify(out.tableWidth), 'cols', JSON.stringify(out.colWidths), 'badgeWrap', out.badgeWrap, 'heights', JSON.stringify(out.rowHeights));
 
 let failures = 0;
 function check(label, ok, detail) {
@@ -176,6 +203,17 @@ check('sorting by name is ordered', out.sortName.join('|') === [...out.sortName]
 check('per-page 10 limits the page', out.paged.rows === Math.min(10, total), out.paged);
 check('card view renders cards and hides the table', out.cards.shown && out.cards.cards === total && out.cards.tableHidden, out.cards);
 check('toggling back to table restores rows', out.backToTable.rows === Math.min(20, total), out.backToTable);
+
+// English mode must not leak the Chinese source of any row label. tr() is a
+// whole-string lookup, so a button built with markup inside the key silently
+// falls back to Chinese (that is exactly what shipped once).
+check('no Chinese text leaks into English rows', out.cjkInRows.length === 0, out.cjkInRows);
+// Rows must stay one height and region badges must not wrap: wrapping made the
+// table ragged at narrower widths (54px rows became 70px).
+// Sub-pixel rounding makes this 53 vs 54; what matters is that no row grew a
+// line (the wrap regression produced 70px rows).
+check('every row has the same height', Math.max(...out.rowHeights) - Math.min(...out.rowHeights) <= 2, out.rowHeights);
+check('region badges never wrap', out.badgeWrap === 0, out.badgeWrap);
 
 if (failures) {
   console.error(`\naccounts table check: ${failures} failure(s)`);

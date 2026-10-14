@@ -248,3 +248,17 @@ test('a failed report shows the reason, not a bare "not reported"', () => {
   // rank 3 keeps failures sorted after pending and before unknown
   assert.equal(st.rank, 3);
 });
+
+// ---- table layout contract ------------------------------------------------------
+// Cells must not wrap. With wrapping on, the Region badges broke onto a second
+// line at narrower widths (the panel lives inside the CPA iframe), which made
+// rows 54px tall in one place and 70px in another — the "not tidy" complaint.
+// Long content is truncated by .nm-wrap / .pack-name instead.
+test('table cells are nowrap and long content truncates instead of wrapping', () => {
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  const tdRule = css.match(/\.acct-table td\{[^}]*\}/);
+  assert.ok(tdRule, '.acct-table td rule missing');
+  assert.match(tdRule[0], /white-space:nowrap/, 'table cells must not wrap');
+  assert.match(css, /\.nm-wrap\{[^}]*max-width/);
+  assert.match(css, /\.nm-main\{[^}]*text-overflow:ellipsis/);
+});

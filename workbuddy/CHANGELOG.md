@@ -114,6 +114,26 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Table tidy-up and English labels
+
+- Fix Chinese leaking into the English panel. Buttons were built by passing
+  whole HTML strings to `tr()`, whose table is a whole-string lookup — every
+  attribute variation (`class`, `title`) missed the table and fell back to the
+  Chinese source, so `已点亮` / `已领取` / `已签到` showed up next to English text.
+  Labels are translated on their own now and the markup is composed around them.
+- Rows keep one height. Cells could wrap, so the Region badges broke onto a
+  second line at narrower widths and 54px rows became 70px — the table looked
+  ragged. Cells are `nowrap`; long content truncates (nickname, uid, package
+  name) with the full value in `title`, and the table scrolls horizontally when
+  it must. Account, Credits and Daily were also compacted (`score 2 · 14d`,
+  `13d`) so the table fits the iframe without scrolling.
+- A CN account with no check-in data yet (cold cache right after a restart) no
+  longer reads "Inactive": it shows `—` / `No check-in data yet`. `active:false`
+  still means the activity is off, but missing data is not the same thing.
+- Checks: the e2e run now fails on any Chinese text in an English row, on mixed
+  row heights and on wrapped Region badges; a unit test pins the `nowrap` CSS
+  contract (verified it fails when wrapping is re-enabled).
+
 ### Row actions: report instead of refresh, and a paced Report all
 
 - The per-row `Refresh` button is gone; a Global row now offers `Report` (or a

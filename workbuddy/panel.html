@@ -89,7 +89,7 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .acct-table th.sortable:hover{color:var(--fg)}
 .acct-table th .arrow{opacity:.35;margin-left:3px}
 .acct-table th.sorted .arrow{opacity:1;color:var(--acc)}
-.acct-table td{padding:8px 9px;border-bottom:1px solid var(--border);vertical-align:middle}
+.acct-table td{padding:8px 9px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
 .acct-table tbody tr:last-child td{border-bottom:0}
 .acct-table tbody tr.acct-row:hover{background:var(--surface)}
 .acct-table tbody tr.acct-row{cursor:pointer}
@@ -101,16 +101,16 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .acct-table input[type=checkbox]{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
 .chev{display:inline-block;width:11px;color:var(--mut);transition:transform .15s;font-size:9px}
 .chev.open{transform:rotate(90deg);color:var(--acc)}
-.nm-wrap{display:inline-block;vertical-align:middle;max-width:186px}
-.nm-main{font-weight:600;max-width:186px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nm-sub{color:var(--mut);font-size:10.5px;font-family:ui-monospace,monospace;max-width:186px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.nm-wrap{display:inline-block;vertical-align:middle;max-width:150px}
+.nm-main{font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm-sub{color:var(--mut);font-size:10.5px;font-family:ui-monospace,monospace;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .cap{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
 .dot.busy{background:var(--warn)}
 .dot.full{background:var(--err)}
 .cred-top{font-variant-numeric:tabular-nums;white-space:nowrap}
 .cred-top b{font-weight:700}
-.mini{height:4px;background:var(--surface-muted);border-radius:3px;overflow:hidden;margin-top:5px;width:110px}
+.mini{height:4px;background:var(--surface-muted);border-radius:3px;overflow:hidden;margin-top:5px;width:92px}
 .mini i{display:block;height:100%;background:var(--ok)}
 .mini i.warn{background:var(--warn)}
 .mini i.err{background:var(--err)}
@@ -909,6 +909,7 @@ const PANEL_EN = {
   "一次性": "one-off",
   "暂无积分包数据": "No credit package data",
   "暂无报告记录": "No report record yet",
+  "暂无签到数据": "No check-in data yet",
   "报告失败": "Report failed",
   "报告": "Report",
   "刷新积分": "Refresh credits",
@@ -1320,23 +1321,18 @@ function card(a){
   // CN: check-in button; Global: claim expert pack button (or Claimed if trial_claimed)
   let actionHTML;
   if(isGlobal){
-    if(a.trial_claimed){
-      actionHTML=tr("<button class=\"done\" disabled=\"disabled\">已领取</button>");
-    }else{
-      actionHTML=`<button class="sec" data-action="claim" data-auth-index="${esc(a.auth_index)}${tr("\">领取专家体验包</button>")}`;
-    }
+    actionHTML=a.trial_claimed
+      ? `<button class="done" disabled="disabled">${tr("已领取")}</button>`
+      : `<button class="sec" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取专家体验包")}</button>`;
   }else{
     const checked=ci.today_checked_in;
-    const btnClass=checked?"done":"sec";
-    const btnText=checked?tr("已签到"):tr("签到");
-    const btnDisabled=checked?" disabled=\"disabled\"":"";
-    actionHTML=`<button class="${btnClass}" data-action="checkin" data-auth-index="${esc(a.auth_index)}"${btnDisabled}>${btnText}</button>`;
+    actionHTML=`<button class="${checked?"done":"sec"}" data-action="checkin" data-auth-index="${esc(a.auth_index)}"${checked?" disabled=\"disabled\"":""}>${checked?tr("已签到"):tr("签到")}</button>`;
   }
   // Card view mirrors the table: report/check-in only, no per-card refresh.
   const reportBtn=(a.region||"cn")==="global"
     ? ((a.daily&&a.daily.lit)
-        ? tr("<button class=\"done\" disabled=\"disabled\">已点亮</button>")
-        : `<button class="sec" data-action="report" data-auth-index="${esc(a.auth_index)}${tr("\" title=\"立即发送 report；奖励今晚到账\">报告</button>")}`)
+        ? `<button class="done" disabled="disabled">${tr("已点亮")}</button>`
+        : `<button class="sec" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`)
     : "";
   // Live account concurrency: current/limit in-flight requests. Only render
   // when the backend reported it (known); legacy dashboards show no badge.
@@ -1441,12 +1437,15 @@ function creditMixOf(a){
 // only the Global bonus is credited later (overnight), CN credits immediately.
 function dailyOf(a){
   if((a.region||"cn")==="cn"){
-    const ci=a.checkin||{};
+    // No check-in data yet (cold cache right after a restart) is NOT the same as
+    // an inactive activity: claiming "Inactive" there was simply wrong.
+    if(!a.checkin) return {pill:"pill-off", label:"—", sub:tr("暂无签到数据"), rank:4};
+    const ci=a.checkin;
     if(!ci.active) return {pill:"pill-off", label:tr("未启用"), sub:"", rank:2};
-    const sub=(ci.streak_days||0)+tr(" 天连续");
+    const sub=(ci.streak_days||0)+"d";
     return ci.today_checked_in
-      ? {pill:"pill-done", label:tr("已签到"), sub, rank:0}
-      : {pill:"pill-wait", label:tr("未签到"), sub, rank:1};
+      ? {pill:"pill-done", label:tr("已签到"), sub:sub, rank:0, title:tr("已签到")+" · "+(ci.streak_days||0)+tr(" 天连续")}
+      : {pill:"pill-wait", label:tr("未签到"), sub:sub, rank:1, title:tr("未签到")+" · "+(ci.streak_days||0)+tr(" 天连续")};
   }
   // Global: lit/score come from the growth heatmap (authoritative — the host's
   // own report timer may be what lit the day), status from our own attempt.
@@ -1455,7 +1454,9 @@ function dailyOf(a){
   if(d.status==="failed" && !d.lit) return {pill:"pill-err", label:tr("报告失败"), sub:d.detail||"", rank:3};
   if(d.lit){
     const streak=(d.lit_days||[]).length;
-    return {pill:"pill-done", label:tr("已点亮"), sub:"score "+(d.score||0)+(streak?" · "+streak+tr(" 天连续"):""), rank:0};
+    // Compact: "score 2 · 14d". The cell carries a title with the long form.
+    return {pill:"pill-done", label:tr("已点亮"), sub:"score "+(d.score||0)+(streak?" · "+streak+"d":""), rank:0,
+            title:tr("已点亮")+" · score "+(d.score||0)+(streak?" · "+streak+tr(" 天连续"):"")};
   }
   const sub = d.last_lit ? tr("上次点亮 ")+d.last_lit : (d.detail||tr("尚未点亮"));
   return {pill:"pill-wait", label:tr("未点亮"), sub:sub, rank:1};
@@ -1494,19 +1495,23 @@ function rowHTML(a){
   // per-row Refresh is gone — refreshing is a bulk action (select rows, then
   // Refresh in the selection bar), so the row keeps only what changes the
   // account's state today.
+  // Buttons are composed here and only their LABEL goes through tr(): the
+  // translation table is a whole-string lookup, so embedding markup in the key
+  // makes every attribute variation a miss and leaks the Chinese source.
   let actionHTML;
   if((a.region||"cn")==="global"){
     const lit=!!(a.daily&&a.daily.lit);
-    actionHTML=(lit
-      ? tr("<button class=\"mini-btn\" disabled=\"disabled\" title=\"今日已点亮，奖励今晚到账\">已点亮</button>")
-      : `<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`)
-      +(a.trial_claimed
-        ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
-        : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`);
+    const reportBtn=lit
+      ? `<button type="button" class="mini-btn" disabled="disabled" title="${tr("今日已点亮，奖励今晚到账")}">${tr("已点亮")}</button>`
+      : `<button type="button" class="mini-btn" data-action="report" data-auth-index="${esc(a.auth_index)}" title="${tr("立即发送 report；奖励今晚到账")}">&#9873; ${tr("报告")}</button>`;
+    const claimBtn=a.trial_claimed
+      ? `<button type="button" class="mini-btn" disabled="disabled">${tr("已领取")}</button>`
+      : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`;
+    actionHTML=reportBtn+claimBtn;
   }else{
     const ci=a.checkin||{};
     actionHTML=ci.today_checked_in
-      ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已签到</button>")
+      ? `<button type="button" class="mini-btn" disabled="disabled">${tr("已签到")}</button>`
       : `<button type="button" class="mini-btn" data-action="checkin" data-auth-index="${esc(a.auth_index)}">${tr("签到")}</button>`;
   }
   return `<tr class="acct-row ${picked}${isOpen?" open":""}" data-auth="${esc(a.auth_index)}" data-region="${rg}" onclick="toggleRow(event,'${esc(a.auth_index)}')">
@@ -1515,7 +1520,7 @@ function rowHTML(a){
     <td><span class="badge ${rg}">${(a.region||"cn")==="global"?tr("国际"):tr("国内")}</span> <span class="badge ${esc(String(a.plan||"unknown").toLowerCase())}">${esc(planLabel(a.plan))}</span></td>
     <td class="cap"><span class="dot ${dotCls}"></span><span class="badge conc" data-conc="${esc(a.concurrency_key||a.auth_index)}">${cc.cur}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span></td>
     <td><div class="cred-top"><b>${cr.known?cr.remain:"?"}</b>${cr.known?" / "+cr.size:""}</div>${cr.known?`<div class="mini"><i class="${barCls}" style="width:${pct}%"></i></div>`:""}</td>
-    <td class="daily"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
+    <td class="daily" title="${esc(dy.title||dy.sub||"")}"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
     <td><span class="badge ${st.cls}">${st.label}</span></td>
     <td class="num">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
     <td class="act">${actionHTML}</td>
