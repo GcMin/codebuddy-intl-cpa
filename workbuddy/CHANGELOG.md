@@ -116,6 +116,17 @@
 
 ### Panel account concurrency display
 
+- Fix a header overflow that hid the last badge on long-nickname cards: the
+  card header is a flex row, and without `min-width:0` the badge strip could not
+  shrink, so it was pushed past the card edge and painted over by the next card.
+  `Intl-thomashallcodeevj` (17 characters, no hyphen to break on) lost its live
+  `0/2` badge entirely (measured: header 373px in a 348px slot, badge 25px
+  outside the card). The nickname now truncates with an ellipsis and exposes the
+  full value through its `title`; the badge strip is pinned with `flex:0 0 auto`
+  and wraps instead of overflowing. `scripts/check-panel-card-overflow.mjs`
+  renders the real card and CSS in headless Chrome and fails if any badge leaves
+  its card (skips with exit 0 when no browser is present).
+
 - Each account card shows a live `current/limit` concurrency badge (e.g. `0/2`)
   fed by the same admission gate that routes requests, so “full” always matches
   the actual routing decision. Idle is neutral, one in-flight is highlighted,

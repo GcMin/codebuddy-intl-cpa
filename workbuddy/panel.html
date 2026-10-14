@@ -55,7 +55,9 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .card,.summary{background:var(--card);border:1px solid var(--border);border-radius:12px}
 .card{padding:16px}
 .card.selected{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-ring)}
-.card h2{font-size:15px;margin:0 0 2px;display:flex;justify-content:space-between;align-items:center}
+.card h2{font-size:15px;margin:0 0 2px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card h2 .cname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card h2 .cbadges{display:flex;gap:6px;align-items:center;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
 .uid{color:var(--mut);font-size:11px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:12px}
 .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-border)}
 .badge.exhausted{background:var(--err-soft);color:var(--err);border:1px solid var(--err-border)}
@@ -1121,8 +1123,9 @@ function card(a){
     ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
     : "";
   const badges=(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
+  const displayName=esc(a.nickname||a.label||a.name);
   return `<div class="card" data-region="${region}" data-auth="${esc(a.auth_index)}">
-  <h2>${esc(a.nickname||a.label||a.name)} <span style="display:flex;gap:6px;align-items:center">${badges}</span></h2>
+  <h2><span class="cname" title="${displayName}">${displayName}</span><span class="cbadges">${badges}</span></h2>
   <div class="uid">${esc(a.uid||"")} · ${esc(a.name||"")}</div>
   ${progressHTML(cr)}
   ${a.error?`${tr("<div class=\"row\"><span class=\"k\">错误</span><span class=\"v err\">")}${esc(a.error)}</span></div>`:""}

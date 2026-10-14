@@ -101,3 +101,32 @@ test('refreshConcurrencyBadges is silent on transient API failure', async () => 
   await new Promise(r=>setTimeout(r,10));
   assert.equal(stub.badges[0].textContent, ''); // untouched
 });
+
+// ---- card header layout contract ------------------------------------------------
+// The badge strip must never be pushed outside the card. Without min-width:0 on
+// the nickname, a long unbreakable name (e.g. "thomashallcodeevj") squeezed the
+// strip past the card edge and hid the last badge — the live concurrency one.
+// scripts/check-panel-card-overflow.mjs proves it by measuring in Chrome; these
+// assertions keep the markup/CSS contract that makes it hold.
+test('card wraps the nickname and keeps badges in a non-shrinking strip', () => {
+  const out = cardCtx.card({auth_index:'1', nickname:'Intl-thomashallcodeevj', plan:'free', region:'global', concurrency_current:0, concurrency_limit:2, concurrency_known:true});
+  assert.match(out, /<span class="cname" title="Intl-thomashallcodeevj">Intl-thomashallcodeevj<\/span>/);
+  // The whole badge strip (region, plan, concurrency) lives inside .cbadges and
+  // closes before </h2>, so no badge can be laid out next to the nickname.
+  const strip = out.slice(out.indexOf('<span class="cbadges">'), out.indexOf('</h2>'));
+  assert.match(strip, /<span class="badge conc" data-conc="1"/);
+  assert.ok(strip.endsWith('</span>'), 'badge strip must close inside the header');
+});
+
+test('nickname in the title attribute is escaped', () => {
+  const out = cardCtx.card({auth_index:'2', nickname:'"><img src=x>', plan:'pro', region:'global'});
+  assert.doesNotMatch(out, /<img/);
+  assert.match(out, /class="cname" title="&quot;&gt;&lt;img src=x&gt;"/);
+});
+
+test('card header CSS lets the name truncate and pins the badge strip', () => {
+  const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+  assert.match(css, /\.card h2 \.cname\{[^}]*min-width:0/);
+  assert.match(css, /\.card h2 \.cname\{[^}]*text-overflow:ellipsis/);
+  assert.match(css, /\.card h2 \.cbadges\{[^}]*flex:0 0 auto/);
+});
