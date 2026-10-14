@@ -92,11 +92,12 @@ Reference: v0.9.7 bump was
 
 ## 5. Post-release
 
-- [ ] **Release body GitHub pendek**: highlight bullet (maks ±8) + link ke full
-      CHANGELOG (`…/blob/main/workbuddy/CHANGELOG.md#<versi-tanpa-titik>`) + tabel
-      aset. JANGAN paste CHANGELOG utuh — body 0.9.7 versi pertama 23KB dan daftar
-      zip tenggelam di bawah (keluhan Noel). Detail panjang tempatnya di
-      CHANGELOG.md.
+- [ ] **Keep the GitHub release body short**: summary bullets (max ~8) + a link to
+      the full CHANGELOG section
+      (`…/blob/main/workbuddy/CHANGELOG.md#<version-without-dots>`) + the asset
+      table. Do NOT paste the whole CHANGELOG section — the first v0.9.7 body was
+      23KB and buried the asset list below it (direct feedback from the operator).
+      Long-form release detail lives in `CHANGELOG.md`.
 - [ ] Reply to issues fixed by the release **only after** the release exists
       (include the version and the upgrade path); leave still-broken issues
       open with a status comment instead.
