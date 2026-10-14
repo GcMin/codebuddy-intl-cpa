@@ -237,6 +237,13 @@ func handleCreditsQuery(req pluginapi.ManagementRequest) map[string]any {
 				acct["error"] = err.Error()
 			} else {
 				acct["credits"] = cr
+				// checkin drives the CN check-in pill (and the card's button
+				// state) on lazy load; without it the panel shows "Inactive".
+				if v, ok := accountCache.Load(f.ID); ok {
+					if e, ok2 := v.(*accountCacheEntry); ok2 && e != nil && e.checkin != nil {
+						acct["checkin"] = e.checkin
+					}
+				}
 				acct["exhausted"] = isCreditsExhausted(cr)
 				if isGlobalDomain(sa.Auth.Domain) {
 					acct["trial_claimed"] = hasTrialPack(cr)

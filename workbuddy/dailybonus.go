@@ -259,12 +259,62 @@ func recordDailyBonus(s *dailyBonusSummary) {
 	lastDailyBonusMu.Lock()
 	lastDailyBonus = s
 	lastDailyBonusMu.Unlock()
+	persistDailyBonus(s)
+}
+
+// persistDailyBonus writes the run to the plugin state file. Best effort: a
+// failure only costs the panel's "already reported today" hint after a restart.
+func persistDailyBonus(s *dailyBonusSummary) {
+	if s == nil {
+		return
+	}
+	rows := make(map[string]persistedDailyRow, len(s.Results))
+	for _, r := range s.Results {
+		if r.AuthIndex == "" {
+			continue
+		}
+		rows[r.AuthIndex] = persistedDailyRow{Day: r.Day, Score: r.Score, Lit: r.Lit, Status: r.Status, Detail: r.Detail}
+	}
+	_ = mutateState(func(st *wbStateFile) error {
+		st.DailyReport = &persistedDailyReport{When: s.When, Rows: rows}
+		return nil
+	})
+}
+
+// loadPersistedDailyBonus restores the last run from disk (once).
+func loadPersistedDailyBonus() *dailyBonusSummary {
+	st, err := loadState()
+	if err != nil || st.DailyReport == nil {
+		return nil
+	}
+	sum := &dailyBonusSummary{When: st.DailyReport.When}
+	for auth, r := range st.DailyReport.Rows {
+		sum.Results = append(sum.Results, dailyBonusRow{
+			AuthIndex: auth, Day: r.Day, Score: r.Score, Lit: r.Lit, Status: r.Status, Detail: r.Detail,
+		})
+	}
+	return sum
 }
 
 func getLastDailyBonus() *dailyBonusSummary {
 	lastDailyBonusMu.RLock()
-	defer lastDailyBonusMu.RUnlock()
-	return lastDailyBonus
+	cached := lastDailyBonus
+	lastDailyBonusMu.RUnlock()
+	if cached != nil {
+		return cached
+	}
+	// First call after a restart: fall back to the persisted run.
+	restored := loadPersistedDailyBonus()
+	if restored == nil {
+		return nil
+	}
+	lastDailyBonusMu.Lock()
+	if lastDailyBonus == nil {
+		lastDailyBonus = restored
+	}
+	got := lastDailyBonus
+	lastDailyBonusMu.Unlock()
+	return got
 }
 
 // runDailyBonusOne lights one account's day if it is not lit yet.

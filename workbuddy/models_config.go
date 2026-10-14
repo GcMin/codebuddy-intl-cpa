@@ -679,6 +679,24 @@ type mmUpdateState struct {
 type wbStateFile struct {
 	Realm  map[string]mmSettings `json:"realm"`
 	Update mmUpdateState         `json:"update"`
+	// DailyReport is the last growth-report run, persisted because the panel
+	// shows "already reported today" per account and the in-memory summary is
+	// lost on every plugin restart (which would misreport every account).
+	DailyReport *persistedDailyReport `json:"daily_report,omitempty"`
+}
+
+// persistedDailyReport is the on-disk form of the last daily-reward run.
+type persistedDailyReport struct {
+	When time.Time                    `json:"when"`
+	Rows map[string]persistedDailyRow `json:"rows"` // keyed by auth_index
+}
+
+type persistedDailyRow struct {
+	Day    string `json:"day,omitempty"`
+	Score  int    `json:"score,omitempty"`
+	Lit    bool   `json:"lit"`
+	Status string `json:"status,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 var (

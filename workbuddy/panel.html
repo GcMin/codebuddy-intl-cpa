@@ -68,6 +68,89 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .badge.conc{background:var(--surface);color:var(--mut);border:1px solid var(--border);font-family:ui-monospace,monospace;font-size:10.5px}
 .badge.conc.busy{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border);font-weight:700}
 .badge.conc.full{background:var(--err-soft);color:var(--err);border:1px solid var(--err-border);font-weight:700}
+
+/* ---- accounts table view ---- */
+.viewbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.viewbar .grow{flex:1}
+.search{position:relative;flex:0 0 250px}
+.search input{width:100%;background:var(--input-bg);border:1px solid var(--border);color:var(--fg);border-radius:8px;padding:7px 10px 7px 30px;font-size:13px}
+.search input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring)}
+.search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:.5}
+.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.view-toggle button{background:var(--surface);border:0;color:var(--mut);padding:7px 11px;cursor:pointer;font-size:13px;line-height:1}
+.view-toggle button+button{border-left:1px solid var(--border)}
+.view-toggle button.on{background:var(--acc);color:var(--on-acc)}
+.selbar{display:none;align-items:center;gap:10px;background:var(--acc-ring);border:1px solid var(--acc);border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:13px}
+.selbar.on{display:flex}
+.tbl-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--card);max-height:72vh}
+.acct-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+.acct-table th{position:sticky;top:0;z-index:2;background:var(--surface);color:var(--mut);text-align:left;padding:8px 9px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;font-size:11.5px}
+.acct-table th.sortable{cursor:pointer;user-select:none}
+.acct-table th.sortable:hover{color:var(--fg)}
+.acct-table th .arrow{opacity:.35;margin-left:3px}
+.acct-table th.sorted .arrow{opacity:1;color:var(--acc)}
+.acct-table td{padding:8px 9px;border-bottom:1px solid var(--border);vertical-align:middle}
+.acct-table tbody tr:last-child td{border-bottom:0}
+.acct-table tbody tr.acct-row:hover{background:var(--surface)}
+.acct-table tbody tr.acct-row{cursor:pointer}
+.acct-table tbody tr.acct-row.open{background:var(--acc-ring)}
+.acct-table tbody tr.picked{background:var(--acc-ring)}
+.acct-table td.num,.acct-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+.acct-table td.sel,.acct-table th.sel{width:32px;text-align:center;padding-left:10px;padding-right:0}
+.acct-table td.act,.acct-table th.act{text-align:right;white-space:nowrap}
+.acct-table input[type=checkbox]{accent-color:var(--acc);width:14px;height:14px;cursor:pointer}
+.chev{display:inline-block;width:11px;color:var(--mut);transition:transform .15s;font-size:9px}
+.chev.open{transform:rotate(90deg);color:var(--acc)}
+.nm-wrap{display:inline-block;vertical-align:middle;max-width:186px}
+.nm-main{font-weight:600;max-width:186px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm-sub{color:var(--mut);font-size:10.5px;font-family:ui-monospace,monospace;max-width:186px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.cap{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
+.dot.busy{background:var(--warn)}
+.dot.full{background:var(--err)}
+.cred-top{font-variant-numeric:tabular-nums;white-space:nowrap}
+.cred-top b{font-weight:700}
+.mini{height:4px;background:var(--surface-muted);border-radius:3px;overflow:hidden;margin-top:5px;width:110px}
+.mini i{display:block;height:100%;background:var(--ok)}
+.mini i.warn{background:var(--warn)}
+.mini i.err{background:var(--err)}
+.daily{white-space:nowrap}
+.daily .dsub{color:var(--mut);font-size:10.5px;margin-top:2px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.pill-done,.pill-wait,.pill-off,.pill-err{border-radius:99px;padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.pill-done{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-border)}
+.pill-wait{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border)}
+.pill-off{background:var(--mut-soft);color:var(--mut);border:1px solid var(--mut-border)}
+.pill-err{background:var(--err-soft);color:var(--err);border:1px solid var(--err-border)}
+.mini-btn{background:var(--btn-sec);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 9px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+.mini-btn:hover{background:var(--btn-sec-hover)}
+.mini-btn:disabled{opacity:.5;cursor:not-allowed}
+.pager{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12.5px;color:var(--mut);flex-wrap:wrap}
+.pager select{background:var(--input-bg);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 8px;font-size:12.5px}
+.pager .sp{flex:1}
+.pbtn{background:var(--btn-sec);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 9px;font-size:12px;cursor:pointer}
+.pbtn.on{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
+.pbtn:disabled{opacity:.4;cursor:not-allowed}
+.detail-row td{background:var(--surface);padding:0;border-bottom:1px solid var(--border)}
+.detail-inner{padding:12px 16px 14px 44px}
+.detail-hd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:9px;font-size:12px;color:var(--mut)}
+.detail-hd b{color:var(--fg)}
+.detail-hd .sep{opacity:.4}
+.pack-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.pack-tbl th{text-align:left;color:var(--mut);font-weight:600;font-size:10.5px;padding:4px 8px;border-bottom:1px solid var(--border)}
+.pack-tbl td{padding:5px 8px;border-bottom:1px dashed var(--border);vertical-align:middle}
+.pack-tbl tr:last-child td{border-bottom:0}
+.pack-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pack-name{max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pack-bar{width:92px;height:4px;background:var(--surface-muted);border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle}
+.pack-bar i{display:block;height:100%;background:var(--ok)}
+.pack-bar i.warn{background:var(--warn)}
+.pack-bar i.err{background:var(--err)}
+.tag{font-size:10px;border-radius:99px;padding:1px 7px;border:1px solid var(--mut-border);color:var(--mut);background:var(--mut-soft);white-space:nowrap}
+.tag.rec{color:var(--acc);border-color:var(--acc);background:var(--acc-ring)}
+.left{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--mut)}
+.left.soon{color:var(--warn);font-weight:600}
+.left.out{color:var(--err);font-weight:600}
+.detail-empty,.empty{padding:20px;text-align:center;color:var(--mut);font-size:12px}
 .filter-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .ftag{background:var(--surface);border:1px solid var(--border);color:var(--mut);border-radius:99px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600}
 .ftag.active{background:var(--acc);color:var(--on-acc);border-color:var(--acc)}
@@ -369,6 +452,23 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <button type="button" class="sec newbtn" id="btnGlobal" onclick="mmOpen('global')"><span data-i18n="⚙ 国际模型">⚙ 国际模型</span><span class="pill">NEW</span></button>
     <button type="button" class="sec newbtn" id="btnCN" onclick="mmOpen('cn')"><span data-i18n="⚙ 国内模型">⚙ 国内模型</span><span class="pill">NEW</span></button>
   </div>
+  <div class="viewbar">
+    <div class="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="acctSearch" placeholder="搜索账号 / 地址" data-i18n-placeholder="搜索账号 / 地址" oninput="acctView.q=this.value;acctView.page=1;renderAccounts()">
+    </div>
+    <div class="view-toggle">
+      <button type="button" id="vtTable" class="on" onclick="setView('table')" title="表格" data-i18n-title="表格">&#9636; <span data-i18n="表格">表格</span></button>
+      <button type="button" id="vtCards" onclick="setView('cards')" title="卡片" data-i18n-title="卡片">&#9638; <span data-i18n="卡片">卡片</span></button>
+    </div>
+    <span class="grow"></span>
+  </div>
+  <div class="selbar" id="selbar">
+    <b id="selN">0</b> <span data-i18n="已选择">已选择</span>
+    <button type="button" class="mini-btn" onclick="refreshPicked(this)"><span data-i18n="刷新积分">刷新积分</span></button>
+    <button type="button" class="mini-btn" onclick="checkinPicked(this)"><span data-i18n="签到">签到</span></button>
+    <button type="button" class="mini-btn" onclick="clearSel()"><span data-i18n="取消选择">取消选择</span></button>
+  </div>
   <div class="filter-bar" id="filterBar">
     <button type="button" class="ftag active" data-region="all" onclick="filterRegion('all',this)"><span data-i18n="全部">全部</span> <span class="cnt" id="cntAll">0</span></button>
     <button type="button" class="ftag" data-region="cn" onclick="filterRegion('cn',this)"><span data-i18n="国内">国内</span> <span class="cnt" id="cntCn">0</span></button>
@@ -376,7 +476,32 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
     <button type="button" class="ftag" data-region="exhausted" onclick="filterRegion('exhausted',this)"><span data-i18n="已耗尽">已耗尽</span> <span class="cnt" id="cntExhausted">0</span></button>
   </div>
   <div class="summary card" id="summaryBox" style="display:none"></div>
-  <div id="grid" class="grid"><div class="loading"><span data-i18n="加载中…">加载中…</span></div></div>
+  <div id="tableWrap" class="tbl-wrap">
+    <table class="acct-table">
+      <thead><tr>
+        <th class="sel"><input type="checkbox" id="selAll" onchange="toggleAll(this.checked)"></th>
+        <th class="sortable" data-k="name" onclick="sortBy('name')"><span data-i18n="账号">账号</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="region" onclick="sortBy('region')"><span data-i18n="区域">区域</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="conc" onclick="sortBy('conc')"><span data-i18n="并发">并发</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="remain" onclick="sortBy('remain')"><span data-i18n="积分">积分</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="report" onclick="sortBy('report')" title="每日报告 / 签到状态" data-i18n-title="每日报告 / 签到状态"><span data-i18n="每日报告">每日报告</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="status" onclick="sortBy('status')"><span data-i18n="状态">状态</span> <span class="arrow">&#8597;</span></th>
+        <th class="sortable" data-k="today" onclick="sortBy('today')" title="今日请求数 / 消耗积分" data-i18n-title="今日请求数 / 消耗积分"><span data-i18n="今日">今日</span> <span class="arrow">&#8597;</span></th>
+        <th class="act"><span data-i18n="操作">操作</span></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="pager" id="acctPager">
+    <span id="pgInfo"></span>
+    <span class="sp"></span>
+    <span data-i18n="每页">每页</span>
+    <select id="perPage" onchange="acctView.per=+this.value;acctView.page=1;renderAccounts()">
+      <option>10</option><option selected>20</option><option>50</option><option>100</option>
+    </select>
+    <span id="pgBtns"></span>
+  </div>
+  <div id="cardWrap" style="display:none"><div id="grid" class="grid"><div class="loading"><span data-i18n="加载中…">加载中…</span></div></div></div>
   <section class="usage-sec" id="usageSec">
     <div class="card">
       <div class="usage-hd">
@@ -739,6 +864,70 @@ const PANEL_EN = {
   "自动签到（国内）": "Auto check-in (CN)",
   "国际账号每日运行 4 次（08:00/12:00/16:00/20:00），点亮活跃日后次日可获得 30 积分奖励包": "Global accounts, four times daily (08:00/12:00/16:00/20:00). An active day earns a 30-credit bonus pack the following day.",
   "每日奖励（国际）": "Daily bonus (Global)",
+  "表格": "Table",
+  "卡片": "Cards",
+  "搜索账号 / 地址": "Search accounts / address",
+  "已选择": "selected",
+  "取消选择": "Clear selection",
+  "刷新积分": "Refresh credits",
+  "刷新完成": "Refresh done",
+  "签到完成": "Check-in done",
+  "没有国内账号": "No CN account selected",
+  "账号": "Account",
+  "区域": "Region",
+  "并发": "Capacity",
+  "积分": "Credits",
+  "每日报告": "Daily report",
+  "每日报告 / 签到状态": "Daily report / check-in status",
+  "状态": "Status",
+  "今日": "Today",
+  "今日请求数 / 消耗积分": "Today's requests / credits spent",
+  "操作": "Actions",
+  "每页": "Per page",
+  "显示 ": "Showing ",
+  " 到 ": " to ",
+  " 条 / 共 ": " of ",
+  " 条": " results",
+  " 次": " req",
+  "正常": "Active",
+  "已过期": "expired",
+  "个积分包": "credit packages",
+  "合计": "total",
+  "重置": "resets",
+  "每日奖励": "daily bonuses",
+  "积分包": "Package",
+  "类型": "Type",
+  "剩余": "Remain",
+  "已用": "Used",
+  "剩余时间": "Expires in",
+  "周期": "Cycle",
+  "注册 250": "signup 250",
+  "月度": "monthly",
+  "每日 30": "daily 30",
+  "裂变": "referral",
+  "一次性": "one-off",
+  "暂无积分包数据": "No credit package data",
+  "暂无报告记录": "No report record yet",
+  "报告失败": "Report failed",
+  "已报告": "Reported",
+  "未报告": "Not reported",
+  "奖励约 01:00 到账": "bonus ~01:00",
+  "已签到": "Checked in",
+  "未签到": "Not checked in",
+  "未启用": "Inactive",
+  " 天连续": " day streak",
+  "/天": "/day",
+  "连续": "streak",
+  "天": "days",
+  "累计": "total",
+  " 成功": " ok",
+  " 已签到": " already",
+  " · ": " · ",
+  " 失败": " failed",
+  "领取体验包": "Claim pack",
+  "已领取": "Claimed",
+  "签到": "Check in",
+  "刷新": "Refresh",
   "全部": "All",
   "已耗尽": "Exhausted",
   "当前并发 / 上限（每账号同时进行中的请求数）": "Live concurrency / limit (in-flight requests per account)",
@@ -1013,6 +1202,8 @@ function saveKey(){
   if(!v)return;
   sessionStorage.setItem(SS_KEY,v);
   document.getElementById("authBox").style.display="none";
+  try{ const saved=localStorage.getItem("workbuddy-acct-view"); if(saved==="cards"||saved==="table") acctView.mode=saved; }catch(_){}
+  setView(acctView.mode);
   load(false);
   mmCheckUpdate(false);
 }
@@ -1135,6 +1326,307 @@ function card(a){
   <div class="actions">${refreshBtn}${actionHTML}</div>
   </div>`;
 }
+// -----------------------------------------------------------------------------
+// Accounts view: table (default) + cards. One renderer per view over the same
+// filtered list, so search / region filter / sort / paging apply to both.
+// -----------------------------------------------------------------------------
+const acctView = {
+  mode: "table",            // "table" | "cards"
+  q: "",
+  sort: {k:"remain", dir:-1},
+  page: 1,
+  per: 20,
+  picked: new Set(),
+  expanded: new Set(),      // rows whose package list is open
+  today: {},                // auth_index -> {requests, credit} from /usage/summary
+};
+
+// A package's expiry is static data that already arrived with the credits
+// payload, so the countdown needs no network: one shared timer rewrites the
+// visible cells once a minute while a detail row is open.
+const expiryTickMs = 60000;
+let expiryTimer = null;
+function fmtLeft(iso){
+  if(!iso) return {t:"—", cls:""};
+  const ms=Date.parse(String(iso).replace(" ","T"))-Date.now();
+  if(!isFinite(ms)) return {t:"—", cls:""};
+  if(ms<=0) return {t:tr("已过期"), cls:"out"};
+  const d=Math.floor(ms/86400000), h=Math.floor(ms%86400000/3600000), m=Math.floor(ms%3600000/60000);
+  return {t:(d>0?d+"d ":"")+h+"h "+m+"m", cls: ms<2*86400000?"soon":""};
+}
+function tickExpiry(){
+  if(document.hidden) return;
+  document.querySelectorAll("[data-exp]").forEach(el=>{
+    const left=fmtLeft(el.getAttribute("data-exp"));
+    el.textContent=left.t;
+    el.classList.toggle("soon", left.cls==="soon");
+    el.classList.toggle("out", left.cls==="out");
+  });
+}
+let expiryVisibilityBound = false;
+function syncExpiryTimer(){
+  const needed = acctView.mode==="table" && acctView.expanded.size>0;
+  if(needed && !expiryTimer){
+    // Bind the visibility listener lazily so this module has no top-level DOM
+    // side effects (it is unit-tested in a bare VM context).
+    if(!expiryVisibilityBound && typeof document!=="undefined" && document.addEventListener){
+      document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) tickExpiry(); });
+      expiryVisibilityBound = true;
+    }
+    expiryTimer=setInterval(tickExpiry, expiryTickMs);
+    tickExpiry();
+  }
+  else if(!needed && expiryTimer){ clearInterval(expiryTimer); expiryTimer=null; }
+}
+
+// Package kind. Names alone are unreliable (upstream calls the 250 signup pack
+// and the daily 30 both "Bonus Pack"), so classify by shape first.
+function packTag(p){
+  const n=String(p.name||""), size=Number(p.size)||0;
+  if(size===250) return {t:tr("注册 250"), cls:""};
+  if(/subscription/i.test(n)||n.indexOf("体验版")>=0) return {t:tr("月度"), cls:"rec"};
+  if(size===30) return {t:tr("每日 30"), cls:""};
+  if(n.indexOf("裂变")>=0) return {t:tr("裂变"), cls:""};
+  return {t:tr("一次性"), cls:""};
+}
+function statusOf(a){
+  if(a.disabled) return {cls:"disabled", label:tr("已禁用"), rank:3};
+  if(a.exhausted) return {cls:"exhausted", label:tr("已耗尽"), rank:2};
+  return {cls:"", label:tr("正常"), rank:0};
+}
+function concOf(a){ return {cur:a.concurrency_current||0, lim:a.concurrency_limit||0}; }
+function creditMixOf(a){
+  const cr=(a&&a.credits)||{};
+  let monthly=null, dailies=0;
+  for(const p of (cr.packages||[])){
+    const s=Date.parse(String(p.cycle_start||"").replace(" ","T"));
+    const e=Date.parse(String(p.cycle_end||"").replace(" ","T"));
+    const days=(e-s)/86400000;
+    if(days>20 && !monthly) monthly={remain:p.remain||0, size:p.size||0, end:String(p.cycle_end||"").slice(0,10)};
+    if((p.size||0)===30) dailies++;
+  }
+  return {monthly, dailies};
+}
+// Daily report (Global, growth beacon) vs check-in (CN). Both are once a day;
+// only the Global bonus is credited later (overnight), CN credits immediately.
+function dailyOf(a){
+  if((a.region||"cn")==="cn"){
+    const ci=a.checkin||{};
+    if(!ci.active) return {pill:"pill-off", label:tr("未启用"), sub:"", rank:2};
+    const sub=(ci.streak_days||0)+tr(" 天连续");
+    return ci.today_checked_in
+      ? {pill:"pill-done", label:tr("已签到"), sub, rank:0}
+      : {pill:"pill-wait", label:tr("未签到"), sub, rank:1};
+  }
+  const d=a.daily;
+  if(!d) return {pill:"pill-off", label:"—", sub:tr("暂无报告记录"), rank:4};
+  if(d.status==="failed") return {pill:"pill-err", label:tr("报告失败"), sub:d.detail||"", rank:3};
+  if(d.lit) return {pill:"pill-done", label:tr("已报告"), sub:"score "+(d.score||0)+" · "+tr("奖励约 01:00 到账"), rank:0};
+  return {pill:"pill-wait", label:tr("未报告"), sub:(d.day||"")+(d.detail?" · "+d.detail:""), rank:1};
+}
+
+function acctFiltered(){
+  const q=acctView.q.trim().toLowerCase();
+  let rows=accountsForFilter(lastAccounts||[]);
+  if(q){
+    rows=rows.filter(a=>((a.nickname||"")+" "+(a.uid||"")+" "+(a.label||"")+" "+(a.region||"")+" "+(a.plan||"")).toLowerCase().includes(q));
+  }
+  const {k,dir}=acctView.sort;
+  const key={
+    name:a=>String(a.nickname||a.label||a.name||"").toLowerCase(),
+    region:a=>String(a.region||"cn"),
+    conc:a=>concOf(a).cur,
+    remain:a=>creditOf(a).remain,
+    report:a=>dailyOf(a).rank,
+    status:a=>statusOf(a).rank,
+    today:a=>(acctView.today[a.auth_index]||{}).requests||0,
+  }[k]||(a=>String(a.nickname||""));
+  return rows.slice().sort((x,y)=>{const a=key(x),b=key(y); if(a<b)return -1*dir; if(a>b)return 1*dir; return 0;});
+}
+
+function rowHTML(a){
+  const st=statusOf(a), cc=concOf(a), cr=creditOf(a), dy=dailyOf(a);
+  const dotCls=cc.cur<=0?"":(cc.cur>=cc.lim?"full":"busy");
+  const barCls=cr.known&&cr.size>0?((Math.round(cr.used/cr.size*100)>85)?"err":(Math.round(cr.used/cr.size*100)>60?"warn":"")):"";
+  const pct=cr.size>0?Math.round(cr.used/cr.size*100):0;
+  const rg=(a.region||"cn")==="global"?"global":"cn";
+  const name=esc(a.nickname||a.label||a.name||""), uid=esc(a.uid||"");
+  const picked=acctView.picked.has(a.auth_index)?"picked":"";
+  const isOpen=acctView.expanded.has(a.auth_index);
+  const t=acctView.today[a.auth_index]||{};
+  let actionHTML;
+  if((a.region||"cn")==="global"){
+    actionHTML=a.trial_claimed
+      ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已领取</button>")
+      : `<button type="button" class="mini-btn" data-action="claim" data-auth-index="${esc(a.auth_index)}">${tr("领取体验包")}</button>`;
+  }else{
+    const ci=a.checkin||{};
+    actionHTML=ci.today_checked_in
+      ? tr("<button class=\"mini-btn\" disabled=\"disabled\">已签到</button>")
+      : `<button type="button" class="mini-btn" data-action="checkin" data-auth-index="${esc(a.auth_index)}">${tr("签到")}</button>`;
+  }
+  return `<tr class="acct-row ${picked}${isOpen?" open":""}" data-auth="${esc(a.auth_index)}" data-region="${rg}" onclick="toggleRow(event,'${esc(a.auth_index)}')">
+    <td class="sel"><input type="checkbox" ${acctView.picked.has(a.auth_index)?"checked":""} onchange="pick('${esc(a.auth_index)}',this.checked)"></td>
+    <td><span class="chev${isOpen?" open":""}">&#9654;</span> <span class="nm-wrap"><div class="nm-main" title="${name}">${name}</div><div class="nm-sub" title="${uid}">${uid}</div></span></td>
+    <td><span class="badge ${rg}">${(a.region||"cn")==="global"?tr("国际"):tr("国内")}</span> <span class="badge ${esc(String(a.plan||"unknown").toLowerCase())}">${esc(planLabel(a.plan))}</span></td>
+    <td class="cap"><span class="dot ${dotCls}"></span><span class="badge conc" data-conc="${esc(a.concurrency_key||a.auth_index)}">${cc.cur}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span></td>
+    <td><div class="cred-top"><b>${cr.known?cr.remain:"?"}</b>${cr.known?" / "+cr.size:""}</div>${cr.known?`<div class="mini"><i class="${barCls}" style="width:${pct}%"></i></div>`:""}</td>
+    <td class="daily"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
+    <td><span class="badge ${st.cls}">${st.label}</span></td>
+    <td class="num">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
+    <td class="act"><button type="button" class="mini-btn" data-action="refresh" data-auth-index="${esc(a.auth_index)}">&#8635; ${tr("刷新")}</button> ${actionHTML}</td>
+  </tr>`;
+}
+
+function detailHTML(a){
+  const cr=creditOf(a);
+  const mix=creditMixOf(a);
+  const packs=((a.credits&&a.credits.packages)||[]).slice().sort((x,y)=>{
+    const ex=Date.parse(String(x.cycle_end||"").replace(" ","T"))||Infinity;
+    const ey=Date.parse(String(y.cycle_end||"").replace(" ","T"))||Infinity;
+    return ex-ey;
+  });
+  const rows=packs.map(p=>{
+    const size=Number(p.size)||0, remain=Number(p.remain)||0;
+    const pct=size>0?Math.round(remain/size*100):0;
+    const bar=pct>85?"err":(pct>60?"warn":"");
+    const tag=packTag(p), left=fmtLeft(p.cycle_end);
+    return `<tr><td><div class="pack-name" title="${esc(String(p.name||""))}">${esc(String(p.name||"—"))}</div></td>
+      <td><span class="tag ${tag.cls}">${tag.t}</span></td>
+      <td class="num"><b>${remain}</b> / ${size}</td>
+      <td><span class="pack-bar"><i class="${bar}" style="width:${pct}%"></i></span></td>
+      <td class="left ${left.cls}" data-exp="${esc(String(p.cycle_end||""))}">${left.t}</td>
+      <td class="left">${esc(String(p.cycle_start||"").slice(0,10))} &rarr; ${esc(String(p.cycle_end||"").slice(0,10))}</td></tr>`;
+  }).join("");
+  const head=`<div class="detail-hd"><b>${packs.length}</b> ${tr("个积分包")}
+    <span class="sep">|</span> ${tr("合计")} <b>${cr.remain}</b> / ${cr.size}
+    ${mix.monthly?`<span class="sep">|</span> ${tr("月度")} <b>${mix.monthly.remain}</b>/${mix.monthly.size} ${tr("重置")} ${esc(mix.monthly.end)}`:""}
+    ${mix.dailies?`<span class="sep">|</span> <b>${mix.dailies}</b>&times;30 ${tr("每日奖励")}`:""}
+    <span class="sep">|</span> ${esc(a.uid||"")}</div>`;
+  const table=packs.length
+    ? `<table class="pack-tbl"><thead><tr><th>${tr("积分包")}</th><th>${tr("类型")}</th><th class="num">${tr("剩余")}</th><th>${tr("已用")}</th><th>${tr("剩余时间")}</th><th>${tr("周期")}</th></tr></thead><tbody>${rows}</tbody></table>`
+    : `<div class="detail-empty">${tr("暂无积分包数据")}</div>`;
+  const ci=(a.region||"cn")==="cn"?(a.checkin||null):null;
+  const checkin=ci?`<div class="detail-hd" style="margin-top:8px">${tr("签到")}: <b>${ci.daily_credit||0}</b>${tr("/天")}
+    <span class="sep">|</span> ${tr("连续")} <b>${ci.streak_days||0}</b> ${tr("天")}
+    <span class="sep">|</span> ${tr("今日")} <b>${ci.today_credit||0}</b>
+    <span class="sep">|</span> ${tr("累计")} <b>${ci.total_credits||0}</b>
+    ${ci.activity_name?`<span class="sep">|</span> ${esc(ci.activity_name)}`:""}</div>`:"";
+  return `<tr class="detail-row"><td colspan="9"><div class="detail-inner">${head}${table}${checkin}</div></td></tr>`;
+}
+
+function renderTable(){
+  const rows=acctFiltered();
+  const start=(acctView.page-1)*acctView.per;
+  const slice=rows.slice(start,start+acctView.per);
+  const tb=document.getElementById("rows");
+  if(!tb) return;
+  tb.innerHTML = slice.length
+    ? slice.map(a=>rowHTML(a)+(acctView.expanded.has(a.auth_index)?detailHTML(a):"")).join("")
+    : `<tr><td colspan="9"><div class="empty">${tr("暂无 CodeBuddy 账号")}</div></td></tr>`;
+  const total=rows.length, from=total?start+1:0, to=Math.min(start+acctView.per,total);
+  const info=document.getElementById("pgInfo");
+  if(info) info.textContent=tr("显示 ")+from+tr(" 到 ")+to+tr(" 条 / 共 ")+total+tr(" 条");
+  const pages=Math.max(1,Math.ceil(total/acctView.per));
+  let btns=`<button type="button" class="pbtn" ${acctView.page<=1?"disabled":""} onclick="gotoPage(${acctView.page-1})">&lsaquo;</button>`;
+  for(let i=1;i<=pages;i++) btns+=`<button type="button" class="pbtn ${i===acctView.page?"on":""}" onclick="gotoPage(${i})">${i}</button>`;
+  btns+=`<button type="button" class="pbtn" ${acctView.page>=pages?"disabled":""} onclick="gotoPage(${acctView.page+1})">&rsaquo;</button>`;
+  const pb=document.getElementById("pgBtns"); if(pb) pb.innerHTML=btns;
+  bindCardActions(tb);
+  const all=document.getElementById("selAll");
+  if(all) all.checked = slice.length>0 && slice.every(a=>acctView.picked.has(a.auth_index));
+  const sn=document.getElementById("selN"); if(sn) sn.textContent=String(acctView.picked.size);
+  const sb=document.getElementById("selbar"); if(sb) sb.classList.toggle("on", acctView.picked.size>0);
+  document.querySelectorAll(".acct-table th.sortable").forEach(th=>{
+    th.classList.toggle("sorted", th.dataset.k===acctView.sort.k);
+    const ar=th.querySelector(".arrow");
+    if(ar) ar.innerHTML = th.dataset.k===acctView.sort.k ? (acctView.sort.dir===1?"&#8593;":"&#8595;") : "&#8597;";
+  });
+}
+function renderCards(){
+  const g=document.getElementById("grid");
+  if(!g) return;
+  const rows=acctFiltered();
+  g.innerHTML = rows.length ? rows.map(card).join("") : `<div class="empty">${tr("暂无 CodeBuddy 账号")}</div>`;
+  bindCardActions(g);
+}
+// renderAccounts is the single entry point after data changes: it refreshes the
+// active view, keeps the other one in sync for the next toggle, and starts or
+// stops the countdown timer.
+function renderAccounts(){
+  if(acctView.mode==="table"){ renderTable(); renderCards(); }
+  else { renderCards(); renderTable(); }
+  syncExpiryTimer();
+}
+function setView(mode){
+  acctView.mode = mode==="cards"?"cards":"table";
+  const tw=document.getElementById("tableWrap"), cw=document.getElementById("cardWrap"), pg=document.getElementById("acctPager");
+  if(tw) tw.style.display = acctView.mode==="table"?"":"none";
+  if(cw) cw.style.display = acctView.mode==="cards"?"":"none";
+  if(pg) pg.style.display = acctView.mode==="table"?"":"none";
+  const vt=document.getElementById("vtTable"), vc=document.getElementById("vtCards");
+  if(vt) vt.classList.toggle("on", acctView.mode==="table");
+  if(vc) vc.classList.toggle("on", acctView.mode==="cards");
+  try{ localStorage.setItem("workbuddy-acct-view", acctView.mode); }catch(_){}
+  renderAccounts();
+}
+function sortBy(k){
+  if(acctView.sort.k===k) acctView.sort.dir*=-1;
+  else { acctView.sort.k=k; acctView.sort.dir=(k==="name"||k==="region")?1:-1; }
+  renderAccounts();
+}
+function gotoPage(p){ acctView.page=p; renderTable(); }
+function pick(idx,on){ on?acctView.picked.add(idx):acctView.picked.delete(idx); renderTable(); }
+function clearSel(){ acctView.picked.clear(); renderTable(); }
+function toggleAll(on){
+  const rows=acctFiltered(), start=(acctView.page-1)*acctView.per;
+  rows.slice(start,start+acctView.per).forEach(a=>{ on?acctView.picked.add(a.auth_index):acctView.picked.delete(a.auth_index); });
+  renderTable();
+}
+function toggleRow(ev, idx){
+  if(ev.target.closest("button,input,label,a")) return;
+  acctView.expanded.has(idx)?acctView.expanded.delete(idx):acctView.expanded.add(idx);
+  renderTable();
+  syncExpiryTimer();
+}
+function pickedAccounts(){
+  return (lastAccounts||[]).filter(a=>acctView.picked.has(a.auth_index));
+}
+async function refreshPicked(btn){
+  const list=pickedAccounts();
+  if(!list.length) return;
+  busy(btn,true);
+  let ok=0, fail=0;
+  for(const a of list){
+    try{
+      const d=await api(`/credits?auth_index=${encodeURIComponent(a.auth_index)}`);
+      const acct=(d.accounts||[])[0]||d;
+      if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; if(acct.plan) a.plan=acct.plan; }
+      if(d.error||(acct&&acct.error)){ a.error=d.error||acct.error; fail++; } else ok++;
+    }catch(e){ fail++; }
+  }
+  busy(btn,false);
+  toast(tr("刷新完成"), fail?"warn":"ok", ok+tr(" 成功")+(fail?tr(" · ")+fail+tr(" 失败"):""));
+  renderAccounts();
+  renderSummary(lastAccounts);
+}
+async function checkinPicked(btn){
+  const list=pickedAccounts().filter(a=>(a.region||"cn")==="cn");
+  if(!list.length){ toast(tr("没有国内账号"),"warn"); return; }
+  busy(btn,true);
+  let ok=0, skip=0;
+  for(const a of list){
+    try{
+      const d=await api("/checkin",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({auth_index:a.auth_index})});
+      const res=(d.results||[])[0]||d;
+      if(res&&res.skipped) skip++; else if(!d.error&&!res.error) ok++;
+    }catch(e){}
+  }
+  busy(btn,false);
+  toast(tr("签到完成"),"ok", ok+tr(" 成功")+(skip?tr(" · ")+skip+tr(" 已签到"):""));
+  await load(false);
+}
+
 let currentFilter="all";
 let lastAccounts=[];
 let lastServerTime="";
@@ -1177,7 +1669,7 @@ function lazyLoadCredits(accounts){
           if(acct.plan) a.plan=acct.plan;
         }
         if(acct&&acct.error){ a.error=acct.error; }
-        updateOneCard(a);
+        updateAccountViews(a);
       })
       .catch(()=>{
         // Retry once after 2s.
@@ -1188,12 +1680,42 @@ function lazyLoadCredits(accounts){
               if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; }
               if(acct&&acct.plan) a.plan=acct.plan;
               if(d.error||acct&&acct.error) a.error=d.error||acct.error;
-              updateOneCard(a);
+              updateAccountViews(a);
             })
-            .catch(()=>{ a.error=tr("加载积分失败"); updateOneCard(a); });
+            .catch(()=>{ a.error=tr("加载积分失败"); updateAccountViews(a); });
         },2000);
       });
   });
+}
+// loadTodayUsage merges /usage/summary into acctView.today (keyed by
+// auth_index). Local JSONL aggregation — no upstream request.
+async function loadTodayUsage(){
+  try{
+    const d=await api("/usage/summary");
+    const map={};
+    (d.accounts||[]).forEach(r=>{ if(r&&r.auth_index) map[r.auth_index]={requests:r.today_requests||0, credit:r.today_credit||0}; });
+    acctView.today=map;
+    renderAccounts();
+  }catch(_){/* today column is optional; keep whatever we had */}
+}
+// updateAccountViews refreshes both representations of one account. The table
+// and the cards are both rendered from lastAccounts, so a single credit load
+// must update whichever one is currently on screen (and keep the other ready).
+function updateAccountViews(a){
+  updateOneRow(a);
+  updateOneCard(a);
+}
+// updateOneRow replaces a single table row (plus its open detail row) in place,
+// so a lazy credit load does not re-render the whole table or lose scroll.
+function updateOneRow(a){
+  const tr=document.querySelector(`#rows tr.acct-row[data-auth="${CSS.escape(a.auth_index)}"]`);
+  if(!tr) return;
+  const tmp=document.createElement("tbody");
+  tmp.innerHTML=rowHTML(a)+(acctView.expanded.has(a.auth_index)?detailHTML(a):"");
+  const open=tr.nextElementSibling;
+  if(open&&open.classList.contains("detail-row")) open.remove();
+  tr.replaceWith(...tmp.children);
+  tickExpiry();
 }
 function updateOneCard(a){
   const el=document.querySelector(`#grid .card[data-auth="${CSS.escape(a.auth_index)}"]`);
@@ -1242,14 +1764,9 @@ function filterRegion(region, btn){
       if(b.dataset.region===currentFilter) b.classList.add("active");
     });
   }
-  document.querySelectorAll("#grid .card").forEach(c=>{
-    const r=c.dataset.region||"cn";
-    let show=true;
-    if(currentFilter==="all") show=true;
-    else if(currentFilter==="exhausted") show=c.querySelector(".badge.exhausted")!=null;
-    else show=r===currentFilter;
-    c.style.display=show?"":"none";
-  });
+  acctView.page=1;
+  // Both views derive from the same filtered list, so re-render both.
+  renderAccounts();
   renderSummary(lastAccounts);
 }
 function updateFilterCounts(accounts){
@@ -1407,13 +1924,13 @@ async function load(force, btn){
       if(force) toast(tr("数据已刷新"), "warn", tr("暂无 CodeBuddy 账号"));
       return;
     }
-    g.innerHTML=accounts.map(card).join("");
-    bindCardActions(g);
     filterRegion(currentFilter, null);
     renderSummary(accounts);
     // Initial badge numbers come with the dashboard; keep them live after.
     refreshConcurrencyBadges();
-    // Lazy-load credits for cards that don't have them yet.
+    // Per-account today totals come from the local usage log (no upstream call).
+    loadTodayUsage();
+    // Lazy-load credits for accounts that don't have them yet.
     lazyLoadCredits(accounts);
     if(force){
       const errN=accounts.filter(a=>a.error).length;
@@ -1497,7 +2014,7 @@ async function refreshCredits(idx, btn){
       if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
       if(acct.plan) a.plan=acct.plan;
       if(acct.error) a.error=acct.error; else a.error="";
-      updateOneCard(a);
+      updateAccountViews(a);
     }
     const remain=acct&&acct.credits?acct.credits.total_remain:"?";
     const who=acct&&acct.nickname?acct.nickname:idx;
@@ -1540,10 +2057,10 @@ async function checkinAll(btn){
     }
     // Mark CN check-in buttons done immediately when any success/already
     if(ok||already){
-      document.querySelectorAll("#grid .card").forEach(c=>{
+      document.querySelectorAll("#grid .card, #rows tr.acct-row").forEach(c=>{
         if((c.dataset.region||"cn")==="cn"){
-          const b=c.querySelector("button.sec,button.done");
-          if(b && /Check-in|Processing|签到|处理中/.test(b.textContent||"")) markCheckinDone(b);
+          const b=c.querySelector("button.sec,button.done,button.mini-btn");
+          if(b && !b.disabled && /Check-in|Processing|签到|处理中/.test(b.textContent||"")) markCheckinDone(b);
         }
       });
     }

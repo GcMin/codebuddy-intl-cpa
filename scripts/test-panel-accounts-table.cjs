@@ -1,0 +1,191 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const {test} = require('node:test');
+
+const html = fs.readFileSync(path.join(__dirname, '../workbuddy/panel.html'), 'utf8');
+
+function slice(start, end) {
+  const i = html.indexOf(start);
+  const j = html.indexOf(end, i);
+  if (i < 0 || j < 0) throw new Error(`marker not found: ${start} / ${end}`);
+  return html.slice(i, j);
+}
+
+// Real helpers from the panel, plus the table module under test.
+const escSrc = slice('function esc(', 'function planLabel(');
+const planLabelSrc = slice('function planLabel(', 'function progressHTML(');
+const creditOfSrc = slice('function creditOf(', 'function renderSummary(');
+const acctFilterSrc = slice('function accountsForFilter(', 'function creditOf(');
+const tableSrc = slice('const acctView = {', 'function renderAccounts()');
+
+const ctx = {
+  tr: s => s,
+  fmtCred: n => String(n),
+  fmtTok: n => String(n),
+  lastAccounts: [],
+  currentFilter: 'all',
+  CSS: {escape: s => s},
+};
+vm.createContext(ctx);
+vm.runInContext(escSrc + planLabelSrc + acctFilterSrc + creditOfSrc + tableSrc, ctx);
+
+// `const` declarations inside a VM script are script-scoped, not properties of
+// the context object, so pull the state object out explicitly.
+const acctView = vm.runInContext('acctView', ctx);
+
+const gateKey = 'global:95e6659d-2f49-45a1-8abb-be3f7cfd8c28';
+
+// ---- package classification ----------------------------------------------------
+test('packTag classifies by shape, not by name (upstream calls both "Bonus Pack")', () => {
+  const {packTag} = ctx;
+  assert.equal(packTag({name: 'Bonus Pack', size: 250}).t, '注册 250');
+  assert.equal(packTag({name: 'Free Plan Subscription', size: 100}).cls, 'rec');
+  assert.equal(packTag({name: 'CodeBuddy个人体验版', size: 500}).cls, 'rec');
+  assert.equal(packTag({name: 'Bonus Pack', size: 30}).t, '每日 30');
+  assert.equal(packTag({name: 'CodeBuddy个人版国内运营裂变包', size: 100}).t, '裂变');
+  assert.equal(packTag({name: 'Mystery', size: 7}).t, '一次性');
+});
+
+// ---- expiry countdown ----------------------------------------------------------
+test('fmtLeft renders days/hours/minutes, warns under 2 days, expires in the past', () => {
+  const {fmtLeft} = ctx;
+  const at = ms => new Date(Date.now() + ms).toISOString();
+  // Tolerate the millisecond that passes between building the timestamp and
+  // formatting it: assert the shape and the day bucket, not an exact minute.
+  assert.match(fmtLeft(at(3 * 86400000 + 3600000)).t, /^3d \d+h \d+m$/);
+  assert.equal(fmtLeft(at(3 * 86400000)).cls, '');
+  assert.equal(fmtLeft(at(86400000)).cls, 'soon');       // 1 day out
+  assert.equal(fmtLeft(at(-1000)).t, '已过期');
+  assert.equal(fmtLeft(at(-1000)).cls, 'out');
+  assert.equal(fmtLeft('').t, '—');
+  assert.equal(fmtLeft('not-a-date').t, '—');
+});
+
+// ---- daily report vs check-in ---------------------------------------------------
+test('dailyOf: CN uses check-in, Global uses the growth report, unknown stays unknown', () => {
+  const {dailyOf} = ctx;
+  // CN
+  assert.equal(dailyOf({region: 'cn', checkin: {active: true, today_checked_in: true, streak_days: 13}}).label, '已签到');
+  assert.equal(dailyOf({region: 'cn', checkin: {active: true, today_checked_in: false, streak_days: 3}}).label, '未签到');
+  assert.equal(dailyOf({region: 'cn', checkin: {active: false}}).label, '未启用');
+  // Global
+  assert.equal(dailyOf({region: 'global', daily: {lit: true, score: 2}}).label, '已报告');
+  assert.equal(dailyOf({region: 'global', daily: {lit: false, status: 'reported'}}).label, '未报告');
+  assert.equal(dailyOf({region: 'global', daily: {status: 'failed', detail: 'heatmap: timeout'}}).label, '报告失败');
+  // No run recorded yet must NOT be reported as "not reported".
+  const unknown = dailyOf({region: 'global'});
+  assert.equal(unknown.label, '—');
+  assert.equal(unknown.sub, '暂无报告记录');
+});
+
+test('dailyOf ranks put reported first and unknown last (sort order)', () => {
+  const {dailyOf} = ctx;
+  const ranks = [
+    dailyOf({region: 'global', daily: {lit: true, score: 2}}).rank,
+    dailyOf({region: 'global', daily: {lit: false, status: 'reported'}}).rank,
+    dailyOf({region: 'global', daily: {status: 'failed'}}).rank,
+    dailyOf({region: 'global'}).rank,
+  ];
+  assert.deepEqual(ranks, [0, 1, 3, 4]);
+});
+
+// ---- row rendering -------------------------------------------------------------
+test('rowHTML uses the gate key for the concurrency badge and shows all columns', () => {
+  const {rowHTML} = ctx;
+  const out = rowHTML({
+    auth_index: '0ffe10a82d6cfd07', concurrency_key: gateKey, nickname: 'Intl-x', uid: 'u-1',
+    region: 'global', plan: 'trial', concurrency_current: 1, concurrency_limit: 2, concurrency_known: true,
+    credits: {total_remain: 345, total_used: 425, total_size: 770, packages: [{size: 250, remain: 0}]},
+    daily: {lit: true, score: 2},
+  });
+  assert.match(out, new RegExp(`data-conc="${gateKey.replace(/:/g, ':')}"`));
+  assert.doesNotMatch(out, /data-conc="0ffe10a82d6cfd07"/);
+  assert.match(out, /data-region="global"/);
+  assert.match(out, /345/);            // credits remain
+  assert.match(out, /770/);            // credits size
+  assert.match(out, /已报告/);          // daily pill
+  assert.match(out, /acct-row/);
+  assert.match(out, /class="chev/);
+});
+
+test('rowHTML escapes account data and survives missing fields', () => {
+  const {rowHTML} = ctx;
+  const out = rowHTML({auth_index: 'a"b', nickname: '<img src=x>', uid: '"><script>', region: 'cn'});
+  assert.doesNotMatch(out, /<img/);
+  assert.doesNotMatch(out, /<script>/);
+  assert.match(out, /class="acct-row/);
+});
+
+// ---- filtering and sorting -----------------------------------------------------
+test('acctFiltered searches name/uid/region/plan and sorts by the selected key', () => {
+  ctx.lastAccounts = [
+    {auth_index: 'a', nickname: 'Intl-gary', uid: 'uid-aaa', region: 'global', plan: 'trial',
+     credits: {total_remain: 0, total_used: 740, total_size: 740}, daily: {lit: false, status: 'reported'}},
+    {auth_index: 'b', nickname: 'CN-64426370', uid: 'uid-bbb', region: 'cn', plan: 'free',
+     credits: {total_remain: 1970, total_used: 3630, total_size: 5600}, checkin: {active: true, today_checked_in: true}},
+    {auth_index: 'c', nickname: 'Intl-laura', uid: 'uid-ccc', region: 'global', plan: 'trial',
+     credits: {total_remain: 599, total_used: 141, total_size: 740}, daily: {lit: true, score: 2}},
+  ];
+  const {acctFiltered} = ctx;
+
+  acctView.q = '';
+  acctView.sort = {k: 'remain', dir: -1};
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b', 'c', 'a']);
+
+  acctView.sort = {k: 'name', dir: 1};
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b', 'a', 'c']); // CN-, Intl-gary, Intl-laura
+
+  acctView.sort = {k: 'report', dir: 1};   // reported(0) < not reported(1)
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b', 'c', 'a']);
+
+  acctView.q = 'laura';
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['c']);
+  acctView.q = 'uid-bbb';
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b']);
+  acctView.q = 'cn';
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b']);
+  acctView.q = '';
+});
+
+test('acctFiltered honours the region filter chips', () => {
+  ctx.lastAccounts = [
+    {auth_index: 'a', nickname: 'g', region: 'global'},
+    {auth_index: 'b', nickname: 'c', region: 'cn'},
+  ];
+  const {acctFiltered} = ctx;
+  acctView.q = ''; acctView.sort = {k: 'name', dir: 1};
+  ctx.currentFilter = 'cn';
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['b']);
+  ctx.currentFilter = 'global';
+  assert.deepEqual(acctFiltered().map(a => a.auth_index), ['a']);
+  ctx.currentFilter = 'all';
+  assert.equal(acctFiltered().length, 2);
+});
+
+// ---- detail rows ---------------------------------------------------------------
+test('detailHTML lists packages expiring first and includes the CN check-in block', () => {
+  const {detailHTML} = ctx;
+  const out = detailHTML({
+    auth_index: 'b', uid: 'uid-bbb', region: 'cn',
+    credits: {total_remain: 100, total_used: 100, total_size: 200, packages: [
+      {name: 'later', size: 30, remain: 30, cycle_start: '2026-10-10 00:00:00', cycle_end: '2026-12-01 00:00:00'},
+      {name: 'sooner', size: 30, remain: 0, cycle_start: '2026-10-01 00:00:00', cycle_end: '2026-10-20 00:00:00'},
+    ]},
+    checkin: {active: true, today_checked_in: true, streak_days: 13, daily_credit: 100, today_credit: 100, total_credits: 1300, activity_name: 'Buddy应用'},
+  });
+  assert.ok(out.indexOf('sooner') < out.indexOf('later'), 'packages must be expiring-first');
+  assert.match(out, /data-exp="2026-10-20 00:00:00"/);
+  assert.match(out, /签到/);
+  assert.match(out, /13/);
+  assert.match(out, /Buddy应用/);
+  assert.match(out, /detail-row/);
+});
+
+test('detailHTML says so explicitly when there is no package data', () => {
+  const {detailHTML} = ctx;
+  const out = detailHTML({auth_index: 'x', region: 'global'});
+  assert.match(out, /暂无积分包数据/);
+  assert.doesNotMatch(out, /pack-tbl/);
+});

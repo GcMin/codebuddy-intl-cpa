@@ -29,3 +29,6 @@ coverage.html
 # Python bytecode from scripts/
 __pycache__/
 *.pyc
+
+# Local previews built from real snapshots (regenerate with mockups/build-accounts-mockup.py)
+/mockups/

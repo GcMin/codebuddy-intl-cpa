@@ -114,6 +114,37 @@
   prefix loss relative to previous input instead of treating every low hit ratio
   as a miss; separate lag follow-ups and incomplete/changed-setting evidence.
 
+### Accounts table view
+
+- The accounts list now defaults to a table (SuperApp-style) with the card grid
+  kept as a toggle; the choice is remembered. Columns: Account (name + uid),
+  Region + plan, Capacity (`current/2` with an idle/busy/full dot), Credits
+  (`remain / total` + usage bar), Daily report, Status, Today (requests and
+  credits from the local usage log), Actions. Search (name/uid/region/plan),
+  per-column sort, paging (10/20/50/100), row selection with bulk refresh and
+  bulk check-in.
+- Clicking a row expands that account's credit packages inline: every package
+  with type, remain/size, usage bar, its own expiry countdown and cycle dates,
+  sorted expiring-first, plus the CN check-in block (daily credit, streak,
+  today, total, activity). Click again to collapse. Checkboxes, buttons and the
+  scheduler switch do not toggle the row.
+- The countdown costs no network: package expiry is static data that already
+  arrived with the credits payload, so one shared timer rewrites only the
+  visible cells once a minute while a detail row is open. It pauses when the
+  tab is hidden and stops entirely when no row is expanded.
+- `Daily report` distinguishes the two mechanisms: Global shows the growth
+  report (reported / not reported / failed, `score`), CN shows check-in
+  (`today_checked_in` + streak). Both are once per day; only the Global bonus
+  is credited later (measured: 00:36-04:54, mostly 00:36-01:33). Accounts with
+  no recorded run show `—` rather than claiming they have not reported. The last
+  run is persisted in `workbuddy-state.json` because the in-memory summary is
+  lost on restart and would misreport every account.
+- `GET /accounts` now returns `daily` per account and `concurrency_key`;
+  `GET /credits` also returns `checkin` so a lazy credit load keeps the CN pill
+  and button correct.
+- Fix the search and per-page controls, which referenced an undefined `state`
+  object and therefore did nothing.
+
 ### Panel account concurrency display
 
 - Fix a header overflow that hid the last badge on long-nickname cards: the

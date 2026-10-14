@@ -27,6 +27,10 @@ type wbAccount struct {
 	ConcurrencyCurrent int    `json:"concurrency_current"`
 	ConcurrencyLimit   int    `json:"concurrency_limit"`
 	ConcurrencyKnown   bool   `json:"concurrency_known"`
+	// Daily carries the last growth-report result for this account (Global
+	// only). Nil means "no run recorded yet", which the panel shows as unknown
+	// rather than claiming the account has not reported.
+	Daily *dailyStatus `json:"daily,omitempty"`
 	// ConcurrencyKey is the gate key this account's slots are reported under by
 	// GET /concurrency (realm:UID). The badge polls that endpoint, so it must
 	// look the account up by this key — auth_index is a different namespace and
@@ -42,6 +46,33 @@ type wbAccount struct {
 // and fetches them lazily via /credits?auth_index=<idx>. This avoids hitting
 // upstream billing APIs for all accounts simultaneously on page load (which
 // causes 500 from rate-limited /v2/billing/meter/get-user-resource).
+// dailyStatus is the per-account view of the last daily-reward run.
+type dailyStatus struct {
+	Day    string `json:"day,omitempty"`
+	Score  int    `json:"score,omitempty"`
+	Lit    bool   `json:"lit"`
+	Status string `json:"status,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	When   string `json:"when,omitempty"`
+}
+
+// dailyStatusByAuth indexes the last run (in-memory or restored from disk).
+func dailyStatusByAuth() map[string]dailyStatus {
+	sum := getLastDailyBonus()
+	if sum == nil {
+		return nil
+	}
+	out := make(map[string]dailyStatus, len(sum.Results))
+	when := sum.When.Format(time.RFC3339)
+	for _, r := range sum.Results {
+		if r.AuthIndex == "" {
+			continue
+		}
+		out[r.AuthIndex] = dailyStatus{Day: r.Day, Score: r.Score, Lit: r.Lit, Status: r.Status, Detail: r.Detail, When: when}
+	}
+	return out
+}
+
 func buildDashboardEx(force, fetchCredits bool) map[string]any {
 	files, err := hostAuthList()
 	if err != nil {
@@ -71,6 +102,7 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 	pruneCheckinLocks()
 	out := make([]wbAccount, len(files))
 	inFlight := accountInFlightSnapshot()
+	dailyByAuth := dailyStatusByAuth()
 	// Accounts are independent — fetch their dashboards concurrently. With 4
 	// accounts this cuts cold-load latency from ~4×(3 serial upstream calls)
 	// to roughly one slowest account.
@@ -108,6 +140,10 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 			acct.ConcurrencyCurrent = inFlight[gateKey]
 			acct.ConcurrencyKey = gateKey
 			acct.ConcurrencyKnown = true
+			if ds, ok := dailyByAuth[f.AuthIndex]; ok {
+				copy := ds
+				acct.Daily = &copy
+			}
 			if fetchCredits {
 				plan, ci, cr, errs := cachedAccountDetails(f.ID, sa, force)
 				acct.Plan = plan
