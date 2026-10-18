@@ -723,9 +723,16 @@ func backendHeaders(req *http.Request, sa *storedAuth) {
 		req.Header.Set("X-No-Department-Info", "1")
 	}
 	req.Header.Set("X-Product", "SaaS")
+
+	// Client identity the upstream validates: realm-aware UA (IDE for Intl, CLI
+	// for CN), X-IDE-Type/X-IDE-Name, x-codebuddy-request and the optional
+	// device token. See client_identity.go for why this matters (11128).
+	applyIdentityHeaders(req, sa)
+
 	// Stable conversation ID enables CodeBuddy prompt cache (KV cache hit).
 	// Random per-request IDs cause cache write on every request and zero reads.
-	// Derive from request body prefix; per-request sub-IDs stay random.
+	// Derive from request body prefix; per-request sub-IDs stay random, and the
+	// tracing family is stamped alongside it.
 	cid := ""
 	if req.Body != nil {
 		if b, err := io.ReadAll(req.Body); err == nil && len(b) > 0 {
@@ -733,13 +740,7 @@ func backendHeaders(req *http.Request, sa *storedAuth) {
 			req.Body = io.NopCloser(bytes.NewReader(b))
 		}
 	}
-	if cid == "" {
-		cid = randomHex(16)
-	}
-	req.Header.Set("X-Conversation-ID", cid)
-	req.Header.Set("X-Conversation-Request-ID", randomHex(16))
-	req.Header.Set("X-Conversation-Message-ID", randomHex(16))
-	req.Header.Set("X-Request-ID", randomHex(16))
+	applyConversationHeaders(req, cid)
 	// Override Origin/Referer for Global accounts so the upstream doesn't
 	// reject the request as cross-origin.
 	origin := originRefererFor(sa)

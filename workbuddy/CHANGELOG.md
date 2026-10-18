@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### The client identity the upstream validates (IDE vs CLI, tracing family)
+
+- The upstream checks *who* the caller claims to be, not only the bearer token:
+  the Intl realm serves the IDE channel and the CN realm the CLI channel, and a
+  request missing the matching headers is refused with `11128 "Illegal API
+  invocation from an unapproved channel"` — the same code a blocked system
+  prompt draws. The plugin sent only `CLI/2.63.2` plus `X-Product`, while the
+  gateways that speak to this upstream (Cartethyia, VansRouter) send the whole
+  family with a version tracked from the publisher's feed.
+- Realm-aware identity: `IDE/<version> CodeBuddy/<version>` for Intl accounts
+  and `CLI/<version> CodeBuddy/<version>` for CN, with `X-IDE-Type` and
+  `X-IDE-Name` matching.
+- Adds `x-codebuddy-request: 1`, `X-Root-Request-ID` (shares the turn id),
+  `x-trace-id` and the B3 pair `X-B3-TraceId`/`X-B3-SpanId`/`X-B3-Sampled`,
+  derived from the message id with the exact 32-/16-hex lengths B3 allows.
+- Forwards `X-Device-Token` when the account carries one
+  (`auth.deviceToken` / `auth.device_token`), with `WB_DEVICE_TOKEN` as a
+  global override. Imported credentials usually have none; the header is then
+  omitted rather than invented, which the upstream accepts.
+- Client version is resolved in the background from the npm release feed of the
+  CodeBuddy CLI, cached for six hours with a pinned fallback, so a registry
+  outage cannot stall a request. `WB_CLIENT_VERSION`, `WB_CLIENT_VERSION_INTL`
+  and `WB_CLIENT_VERSION_CN` override it. The poll uses its own HTTP client and
+  never rides the chat transport.
+- `Accept: text/event-stream` on the chat path, which is always streamed.
+- `X-Conversation-ID` keeps its stable from-body derivation (prompt cache);
+  identity and correlation headers now live in one function each, so a future
+  upstream change has a single edit site. `client_identity_test.go` covers the
+  realm split, version precedence, B3 shapes and the optional device token.
+
 ### The blocked-template rewrites actually match what the client sends
 
 - `sanitizeBlockedTemplates` matched two whole sentences that the upstream
