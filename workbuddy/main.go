@@ -722,11 +722,9 @@ func backendHeaders(req *http.Request, sa *storedAuth) {
 	} else {
 		req.Header.Set("X-No-Department-Info", "1")
 	}
-	req.Header.Set("X-Product", "SaaS")
-
 	// Client identity the upstream validates: realm-aware UA (IDE for Intl, CLI
-	// for CN), X-IDE-Type/X-IDE-Name, x-codebuddy-request and the optional
-	// device token. See client_identity.go for why this matters (11128).
+	// for CN), X-Product, X-IDE-Type/X-IDE-Name, x-codebuddy-request and the
+	// optional device token. See client_identity.go for why this matters (11128).
 	applyIdentityHeaders(req, sa)
 
 	// Stable conversation ID enables CodeBuddy prompt cache (KV cache hit).

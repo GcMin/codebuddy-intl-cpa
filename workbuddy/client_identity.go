@@ -243,6 +243,7 @@ func applyIdentityHeaders(req *http.Request, sa *storedAuth) {
 	global := sa != nil && isGlobalDomain(sa.Auth.Domain)
 	identity := identityFor(sa)
 	req.Header.Set("User-Agent", buildClientUA(identity, clientVersionFor(global)))
+	req.Header.Set("X-Product", "SaaS")
 	req.Header.Set("X-IDE-Type", identity)
 	req.Header.Set("X-IDE-Name", identity)
 	req.Header.Set("x-codebuddy-request", "1")

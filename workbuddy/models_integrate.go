@@ -98,7 +98,9 @@ func handleModelsTest(req pluginapi.ManagementRequest) map[string]any {
 	if authID == "" {
 		return map[string]any{"error": "auth is required"}
 	}
-	target, err := resolveFetchTarget(authID)
+	// Use the same seam the catalog fetch uses, so tests can drive the handler
+	// without a live host auth API.
+	target, err := mmFetchTargetFn(authID)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
@@ -126,10 +128,16 @@ func handleModelsTest(req pluginapi.ManagementRequest) map[string]any {
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+target.Token)
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Origin", target.Origin)
 	httpReq.Header.Set("Referer", target.Origin+"/")
-	httpReq.Header.Set("User-Agent", workBuddyUA)
+	// The tester must speak the same client identity as a real chat call, or a
+	// model that fails here passes in production (and the other way around).
+	// realmAuth carries only the realm; identityFor() reads the domain, and
+	// isGlobalDomain() accepts the URL form resolveFetchTarget returns.
+	realmAuth := &storedAuth{}
+	realmAuth.Auth.Domain = target.Origin
+	applyIdentityHeaders(httpReq, realmAuth)
+	applyConversationHeaders(httpReq, "")
 	if target.UID != "" {
 		httpReq.Header.Set("X-User-Id", target.UID)
 	}
