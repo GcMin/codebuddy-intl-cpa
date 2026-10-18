@@ -21,12 +21,9 @@ func (f executorErrorTransport) RoundTrip(req *http.Request) (*http.Response, er
 }
 
 func TestExecutorUpstreamErrorsPreserveHTTPStatus(t *testing.T) {
-	client := sharedHTTPClient()
-	original := client.Transport
-	defer func() { client.Transport = original }()
 	const body = `{"code":11128,"msg":"Illegal API invocation from an unapproved channel"}`
 	calls := 0
-	client.Transport = executorErrorTransport(func(req *http.Request) (*http.Response, error) {
+	restore := setDirectTransport(executorErrorTransport(func(req *http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{
 			StatusCode: http.StatusBadRequest,
@@ -34,7 +31,8 @@ func TestExecutorUpstreamErrorsPreserveHTTPStatus(t *testing.T) {
 			Body:       io.NopCloser(strings.NewReader(body)),
 			Request:    req,
 		}, nil
-	})
+	}))
+	t.Cleanup(restore)
 	cand := &failoverCandidate{AuthID: "test", Auth: &storedAuth{}}
 	payload := []byte(`{"model":"deepseek-v4.1-flash","stream":true,"messages":[]}`)
 	paths := []struct {

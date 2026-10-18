@@ -62,11 +62,8 @@ func TestRecoveryProbeExecutorPaths(t *testing.T) {
 						oldEmit := streamEmitSource
 						streamEmitSource = func(string, []byte) error { return nil }
 						t.Cleanup(func() { streamEmitSource = oldEmit })
-						client := sharedHTTPClient()
-						oldTransport := client.Transport
-						t.Cleanup(func() { client.Transport = oldTransport })
 						calls := 0
-						client.Transport = exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
+						restore := setDirectTransport(exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
 							if !strings.HasSuffix(r.URL.Path, "/v2/chat/completions") {
 								t.Fatalf("unexpected path %s", r.URL.Path)
 							}
@@ -87,7 +84,8 @@ func TestRecoveryProbeExecutorPaths(t *testing.T) {
 								status, payload = 429, `{"code":6004,"msg":"frequency limit"}`
 							}
 							return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}, nil
-						})
+						}))
+						t.Cleanup(restore)
 						req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: model, AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cands[0].Auth), Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
 						raw, _ := json.Marshal(req)
 						var err error
@@ -309,17 +307,15 @@ func TestBusyFallbackRealExecutorPaths(t *testing.T) {
 			oldEmit := streamEmitSource
 			streamEmitSource = func(string, []byte) error { return nil }
 			t.Cleanup(func() { streamEmitSource = oldEmit })
-			client := sharedHTTPClient()
-			oldTransport := client.Transport
-			t.Cleanup(func() { client.Transport = oldTransport })
 			calls := 0
-			client.Transport = exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
+			restore := setDirectTransport(exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
 				calls++
 				if r.Header.Get("X-User-Id") != "uid-b" {
 					t.Fatal("upstream attempted busy account")
 				}
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":1,\"credit\":0.01}}\n\ndata: [DONE]\n\n"))}, nil
-			})
+			}))
+			t.Cleanup(restore)
 			req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: "cb/gpt-6.1-sol", AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cs[0].Auth), Headers: http.Header{"Authorization": []string{"Bearer fake-client-key"}}, Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
 			raw, _ := json.Marshal(req)
 			var err error

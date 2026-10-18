@@ -39,12 +39,10 @@ func TestSSEAuxiliaryEventsAreNotCompletionChunks(t *testing.T) {
 }
 
 func TestProgressOnlyStreamsFailAllExecutorPaths(t *testing.T) {
-	client := sharedHTTPClient()
-	original := client.Transport
-	defer func() { client.Transport = original }()
-	client.Transport = executorErrorTransport(func(req *http.Request) (*http.Response, error) {
+	restore := setDirectTransport(executorErrorTransport(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("event:progress_notice\ndata:\"Processing_123\"\n\n")), Request: req}, nil
-	})
+	}))
+	t.Cleanup(restore)
 	cand := &failoverCandidate{AuthID: "fixture", Auth: &storedAuth{}}
 	for _, tc := range []struct {
 		name string
@@ -140,11 +138,8 @@ func TestExecutorRestoresOriginalDeveloperRoles(t *testing.T) {
 			oldStore := usageStore
 			usageStore = &requestUsageStore{perDay: map[string]map[string]*dayAgg{}}
 			t.Cleanup(func() { usageStore = oldStore })
-			client := sharedHTTPClient()
-			oldTransport := client.Transport
-			t.Cleanup(func() { client.Transport = oldTransport })
 			calls := 0
-			client.Transport = executorErrorTransport(func(r *http.Request) (*http.Response, error) {
+			restore := setDirectTransport(executorErrorTransport(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/v2/chat/completions") {
 					t.Fatalf("unexpected HTTP call: %s", r.URL.Path)
 				}
@@ -160,7 +155,8 @@ func TestExecutorRestoresOriginalDeveloperRoles(t *testing.T) {
 				}
 				payload := "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
 				return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}, nil
-			})
+			}))
+			t.Cleanup(restore)
 			req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{
 				Model: "gpt-6.1-sol", AuthID: cand.AuthID, StorageJSON: storageJSONForAuth(cand.Auth),
 				Payload:         []byte(`{"messages":[{"role":"user","content":"rules"},{"role":"user","content":"hi"}]}`),

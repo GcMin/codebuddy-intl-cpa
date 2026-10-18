@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
@@ -262,6 +263,48 @@ func hostHTTPDo(req *http.Request) (*hostHTTPResponse, error) {
 	}, nil
 }
 
+// hostDirectTransportOverride lets tests intercept plugin-originated HTTP
+// without writing to sharedHTTPClient().Transport. That assignment is not safe:
+// background work (the CPAMP usage push runs in its own goroutine) can be inside
+// Do() while a test swaps the field, and the race detector flags it. Reads and
+// writes go through the mutex instead, and the override is applied to a shallow
+// client copy so the shared client and its connection pool stay untouched.
+var (
+	hostDirectTransportMu       sync.RWMutex
+	hostDirectTransportOverride http.RoundTripper
+)
+
+// setDirectTransport installs the transport hostHTTPDoDirect uses and returns a
+// restore function for the caller (`t.Cleanup(restore)` / `defer restore()`).
+func setDirectTransport(rt http.RoundTripper) func() {
+	hostDirectTransportMu.Lock()
+	prev := hostDirectTransportOverride
+	hostDirectTransportOverride = rt
+	hostDirectTransportMu.Unlock()
+	return func() {
+		hostDirectTransportMu.Lock()
+		hostDirectTransportOverride = prev
+		hostDirectTransportMu.Unlock()
+	}
+}
+
+// directHTTPClient returns the fallback client every *Direct path uses: the
+// shared client, or a shallow copy carrying the test transport override when one
+// is installed. Copying keeps the shared client (and its connection pool)
+// untouched while background work may be inside Do().
+func directHTTPClient() *http.Client {
+	client := sharedHTTPClient()
+	hostDirectTransportMu.RLock()
+	override := hostDirectTransportOverride
+	hostDirectTransportMu.RUnlock()
+	if override == nil {
+		return client
+	}
+	clone := *client
+	clone.Transport = override
+	return &clone
+}
+
 // hostHTTPDoDirect executes the request via the plugin's own http.Client.
 // Used as a fallback when the host bridge is unavailable (unit tests).
 func hostHTTPDoDirect(req *http.Request, bodyBytes []byte) (*hostHTTPResponse, error) {
@@ -271,7 +314,7 @@ func hostHTTPDoDirect(req *http.Request, bodyBytes []byte) (*hostHTTPResponse, e
 		return nil, err
 	}
 	newReq.Header = req.Header.Clone()
-	resp, err := sharedHTTPClient().Do(newReq)
+	resp, err := directHTTPClient().Do(newReq)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +408,7 @@ func hostHTTPDoStreamDirect(req *http.Request, bodyBytes []byte) (*hostHTTPStrea
 		return nil, 0, nil, err
 	}
 	newReq.Header = req.Header.Clone()
-	resp, err := sharedHTTPClient().Do(newReq)
+	resp, err := directHTTPClient().Do(newReq)
 	if err != nil {
 		return nil, 0, nil, err
 	}

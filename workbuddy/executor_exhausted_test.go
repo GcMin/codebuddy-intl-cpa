@@ -52,10 +52,8 @@ func TestExecutorCreditFailoverIntegration(t *testing.T) {
 					usageMetaCache.byAuthID, usageMetaCache.byUID, usageMetaCache.byIndex, usageMetaCache.refreshed = oldID, oldUID, oldIndex, oldAt
 					usageMetaCache.mu.Unlock()
 				})
-				client := sharedHTTPClient()
-				oldTransport := client.Transport
 				var order, cids, bodies []string
-				client.Transport = exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
+				restore := setDirectTransport(exhaustedMockTransport(func(r *http.Request) (*http.Response, error) {
 					if !strings.HasSuffix(r.URL.Path, "/v2/chat/completions") {
 						t.Fatalf("unexpected HTTP call: %s", r.URL.Path)
 					}
@@ -69,8 +67,8 @@ func TestExecutorCreditFailoverIntegration(t *testing.T) {
 						payload = "data: {\"id\":\"test\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":1,\"credit\":0.01}}\n\ndata: [DONE]\n\n"
 					}
 					return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}, nil
-				})
-				t.Cleanup(func() { client.Transport = oldTransport })
+				}))
+				t.Cleanup(restore)
 				req := executorStreamRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: "cb/gpt-6.1-sol", AuthID: "exhaust-a", StorageJSON: storageJSONForAuth(cands[0].Auth), Payload: []byte(`{"model":"cb/gpt-6.1-sol","messages":[{"role":"system","content":"test"},{"role":"user","content":"hello"}]}`)}}
 				var err error
 				raw, _ := json.Marshal(req)
