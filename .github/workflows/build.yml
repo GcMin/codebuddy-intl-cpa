@@ -336,6 +336,33 @@ jobs:
           # and the repo copy is refreshed on the next manual edit.
           cp registry.json out/registry.json
 
+      - name: Extract release notes from the CHANGELOG
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The release body keeps only a short highlight list; the full section
+          # ships as a `release-notes.md` asset so the panel's update popover can
+          # show real notes instead of the static registry description.
+          python3 - "$VERSION" <<'PY'
+          import pathlib, re, sys
+          version = sys.argv[1]
+          text = pathlib.Path('workbuddy/CHANGELOG.md').read_text(encoding='utf-8')
+          start = re.search(rf'^##\s+{re.escape(version)}\s*$', text, re.M)
+          section = ''
+          if start:
+              rest = text[start.end():]
+              nxt = re.search(r'^##\s+', rest, re.M)
+              section = (rest[:nxt.start()] if nxt else rest).strip()
+          pathlib.Path('out/release-notes.md').write_text(section + '\n' if section else '', encoding='utf-8')
+          # 'Thanks' is a credit list, not a change; keep highlights to behaviour.
+          titles = [m.group(1).strip() for m in re.finditer(r'^###\s+(.+)$', section, re.M)]
+          bullets = [f'- {t}' for t in titles if t.lower() != 'thanks'][:8]
+          pathlib.Path('out/highlights.txt').write_text('\n'.join(bullets) + ('\n' if bullets else ''), encoding='utf-8')
+          PY
+          echo "--- highlights ---"
+          cat out/highlights.txt
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -360,6 +387,10 @@ jobs:
 
           Multi-arch builds for the [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
           plugin store (\`github-release\` install type).
+
+          ### Highlights
+          $(cat out/highlights.txt)
+          Full release notes: [\`workbuddy/CHANGELOG.md\` ${TAG}](${REPO_URL}/blob/main/workbuddy/CHANGELOG.md#${VERSION//./})
 
           ### Assets (pluginstore \`ArchiveName(id, version, goos, goarch)\`)
           | File | Contents |
@@ -387,9 +418,9 @@ jobs:
           EOF
           )
           if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" out/*.zip out/checksums.txt out/registry.json --clobber --repo "${GITHUB_REPOSITORY}"
+            gh release upload "${TAG}" out/*.zip out/checksums.txt out/registry.json out/release-notes.md --clobber --repo "${GITHUB_REPOSITORY}"
           else
-            gh release create "${TAG}" out/*.zip out/checksums.txt out/registry.json \
+            gh release create "${TAG}" out/*.zip out/checksums.txt out/registry.json out/release-notes.md \
               --repo "${GITHUB_REPOSITORY}" \
               --title "CodeBuddy Intl CPA v${VERSION}" \
               --notes "${NOTES}"
