@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 const cacheTraceMaxMessages = 512
@@ -90,6 +92,68 @@ func cacheTraceEnabledFromEnv(value string) bool {
 func init() {
 	if cacheTraceEnabledFromEnv(os.Getenv("WB_CACHE_TRACE")) {
 		cacheTraceEnabled.Store(true)
+	}
+}
+
+// cacheTraceEnvDefault reports the deployment default from WB_CACHE_TRACE.
+func cacheTraceEnvDefault() bool {
+	return cacheTraceEnabledFromEnv(os.Getenv("WB_CACHE_TRACE"))
+}
+
+// applyCacheTracePreference resolves the effective switch. An explicit panel
+// choice persisted in workbuddy-state.json wins over the environment default,
+// so a toggle flipped from the Usage card survives plugin restarts. Called from
+// configure() on every register/reconfigure.
+func applyCacheTracePreference() {
+	if st, err := loadState(); err == nil && st.CacheTrace != nil {
+		cacheTraceEnabled.Store(*st.CacheTrace)
+		return
+	}
+	cacheTraceEnabled.Store(cacheTraceEnvDefault())
+}
+
+// handleCacheTraceStatus reports the effective switch and where it came from:
+// an explicit panel choice (has_override) or the WB_CACHE_TRACE default.
+func handleCacheTraceStatus() map[string]any {
+	override := false
+	if st, err := loadState(); err == nil {
+		override = st.CacheTrace != nil
+	}
+	return map[string]any{
+		"enabled":      cacheTraceEnabled.Load(),
+		"env_default":  cacheTraceEnvDefault(),
+		"has_override": override,
+		"persistent":   true,
+	}
+}
+
+// handleCacheTraceConfig flips tracing at runtime and persists the choice in
+// workbuddy-state.json (POST /cachetrace/config, body {"enabled": bool}). The
+// flip applies to new requests immediately; rows already written keep whatever
+// they had. Unlike the scheduler toggles, a restart does not silently turn the
+// setting back off — this is a debugging session the user started on purpose.
+func handleCacheTraceConfig(req pluginapi.ManagementRequest) map[string]any {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := json.Unmarshal(req.Body, &body); err != nil || body.Enabled == nil {
+		return map[string]any{"error": `expected {"enabled": true|false}`}
+	}
+	on := *body.Enabled
+	cacheTraceEnabled.Store(on)
+	persistent := true
+	if err := mutateState(func(st *wbStateFile) error {
+		st.CacheTrace = cloneBoolPtr(&on)
+		return nil
+	}); err != nil {
+		persistent = false
+		guardLogf("cache-trace: state write failed, keeping runtime-only: %v", err)
+	}
+	return map[string]any{
+		"enabled":      on,
+		"env_default":  cacheTraceEnvDefault(),
+		"has_override": persistent,
+		"persistent":   persistent,
 	}
 }
 

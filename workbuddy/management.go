@@ -156,6 +156,8 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/dailybonus", Description: "Manually light today's growth day for Global accounts (or one with auth_index) so each earns its 30-credit daily Bonus Pack. Idempotent: days already lit are skipped."},
 			{Method: http.MethodGet, Path: base + "/dailybonus/status", Description: "Last daily-reward run summary (per account: day, score, lit dates) + schedule and toggle."},
 			{Method: http.MethodPost, Path: base + "/dailybonus/config", Description: "Toggle the scheduled Global daily-reward run (body: {enabled: true/false})."},
+			{Method: http.MethodGet, Path: base + "/cachetrace/config", Description: "Cache-tracing switch: enabled, the WB_CACHE_TRACE default, and whether the persisted panel choice overrides it."},
+			{Method: http.MethodPost, Path: base + "/cachetrace/config", Description: "Enable/disable content-free request fingerprints at runtime (body: {enabled: true/false}); persisted in workbuddy-state.json and wins over WB_CACHE_TRACE."},
 			{Method: http.MethodGet, Path: base + "/usage", Description: "Per-request CodeBuddy usage log (credit/tokens). Query: auth_index, limit (default 100), from, to."},
 			{Method: http.MethodGet, Path: base + "/usage/summary", Description: "Per-account usage summary (last/today/all credit + requests)."},
 			{Method: http.MethodGet, Path: base + "/models/config", Description: "Model Manager catalog and realm-wide settings (defaults → realm). Query: realm, fetch_account_global, fetch_account_cn; reset=1&realm=... restores one realm and reloads host models."},
@@ -163,6 +165,7 @@ func managementRegistration() managementRegistrationResponse {
 			{Method: http.MethodPost, Path: base + "/models/refresh", Description: "Re-fetch the upstream model catalog for every account in the realm (body: {realm}). Cheap console GETs, no chat credits."},
 			{Method: http.MethodPost, Path: base + "/models/test", Description: "Live-test one model against the upstream with the selected account (body: {realm, auth, model}). Returns status, served model, tokens, credit."},
 			{Method: http.MethodGet, Path: base + "/update/check", Description: "Plugin update status vs the GitHub release registry (query: refresh=1, seen=<ver>). Silent fail."},
+			{Method: http.MethodPost, Path: base + "/oauth/region", Description: "Choose which realm issues the OAuth login URL (body: {region: \"intl\"|\"cn\"}; empty body reads the current value). Intl issues on www.codebuddy.ai (stays on .ai), CN on copilot.tencent.com."},
 		},
 		Resources: []resourceRoute{
 			{Path: "/panel", Menu: pluginMenuName, Description: pluginPanelBrand + " dashboard: credits, check-in, plan, import."},
@@ -230,6 +233,15 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleDailyBonusStatus()))
 	case req.Method == http.MethodPost && path == base+"/dailybonus/config":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleDailyBonusConfig(req)))
+	case req.Method == http.MethodGet && path == base+"/cachetrace/config":
+		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleCacheTraceStatus()))
+	case req.Method == http.MethodPost && path == base+"/cachetrace/config":
+		out := handleCacheTraceConfig(req)
+		status := http.StatusOK
+		if out["error"] != nil {
+			status = http.StatusBadRequest
+		}
+		return okEnvelope(mgmtJSONResponse(status, out))
 	case req.Method == http.MethodGet && path == base+"/usage":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUsageQuery(req)))
 	case req.Method == http.MethodGet && path == base+"/usage/summary":
@@ -251,6 +263,15 @@ func handleManagement(raw []byte) ([]byte, error) {
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleModelsTest(req)))
 	case req.Method == http.MethodGet && path == base+"/update/check":
 		return okEnvelope(mgmtJSONResponse(http.StatusOK, handleUpdateCheck(req)))
+	case req.Method == http.MethodPost && path == base+"/oauth/region":
+		// An unknown region is a client error: answer 400 with the same
+		// {"error": "..."} body the panel already reads.
+		out := handleOAuthRegionConfig(req)
+		status := http.StatusOK
+		if out["error"] != nil {
+			status = http.StatusBadRequest
+		}
+		return okEnvelope(mgmtJSONResponse(status, out))
 	}
 	return okEnvelope(mgmtJSONResponse(http.StatusNotFound, map[string]any{"error": "not found: " + path}))
 }

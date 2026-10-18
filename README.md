@@ -160,7 +160,9 @@ hit bills ~0.05 credit instead of ~0.62.
 
 For diagnosing transient prompt-cache misses the plugin can additionally record
 **content-free request hashes** and the actual outgoing conversation id. That is
-**off by default** — set `WB_CACHE_TRACE=1` in the plugin's environment to collect
+**off by default** — set `WB_CACHE_TRACE=1` in the plugin's environment, or flip
+**Hash tracing** on the Usage card (persisted in `workbuddy-state.json`, wins over
+the env default), to collect
 it, because the fingerprints otherwise dominate the accounting log (measured at
 99.4% of each line) and slow the usage view down. See
 [cache tracing](workbuddy/docs/cache-tracing.md) for the fields, the privacy limits, and the
@@ -229,7 +231,24 @@ either.
   checking rows and pressing **Refresh data** refreshes those rows.
 - Missing data renders as `—`. The panel never claims a state it has not read.
 
-### 8. Inherited from the original plugin
+### 8. OAuth login region (Global / CN)
+
+The OAuth button issues its login state on the realm picked in the toolbar's **Login region**
+selector (default **Global**):
+
+- **Global (codebuddy.ai)** — the login URL is `https://www.codebuddy.ai/login?platform=ide&state=…`,
+  so the page stays on `.ai` and an Intl account can finish the flow.
+- **CN (copilot.tencent.com)** — the CN issuer, unchanged (`platform=CLI`). Pick it before
+  logging in a CN account.
+
+The issuer is not cosmetic: the login state is realm-scoped. A state minted on
+`copilot.tencent.com` opens a login page that redirects to `codebuddy.cn`, where an Intl
+account cannot complete (issue #5), and a `.cn` page rejects a state minted on `.ai`
+(HTTP 400). The choice is an ordinary plugin setting — `oauth_region: intl|cn` under
+`plugins.configs.workbuddy`, env `WB_OAUTH_REGION`, or the panel selector, which writes it at
+runtime like the check-in / daily-bonus toggles (the config value wins again after a restart).
+
+### 9. Inherited from the original plugin
 
 Multi-account OAuth login, dynamic model list, chat executor, Global one-time 250-credit
 expert trial (14 days, once per account), credit lifecycle (disable CN / delete Global when
@@ -330,7 +349,7 @@ Platform layout also works: `plugins/linux/amd64/workbuddy.so`.
 | Variable | Effect |
 | --- | --- |
 | `WORKBUDDY_DATA_DIR` | Where `workbuddy-state.json`, `session-affinity.json` and the usage logs live. Defaults to `.codebuddy_data` under the auth dir. |
-| `WB_CACHE_TRACE` | `1`/`true`/`yes`/`on` records content-free request fingerprints for prompt-cache investigations. **Off by default** — see [cache tracing](workbuddy/docs/cache-tracing.md). |
+| `WB_CACHE_TRACE` | `1`/`true`/`yes`/`on` records content-free request fingerprints for prompt-cache investigations. **Off by default** — the Usage card's **Hash tracing** toggle overrides this and persists across restarts. See [cache tracing](workbuddy/docs/cache-tracing.md). |
 | `WB_MANAGEMENT_KEY` | Fallback management key when the config does not set one. |
 | `WB_SELF_URL` | Base URL the plugin uses to trigger a host model-registry reload after Save. |
 | `USAGE_REPORT_URL`, `USAGE_REPORT_KEY` | Optional CPAMP usage import target and key. |

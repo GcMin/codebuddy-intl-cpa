@@ -1,5 +1,78 @@
 # Changelog
 
+## Unreleased
+
+### The blocked-template rewrites actually match what the client sends
+
+- `sanitizeBlockedTemplates` matched two whole sentences that the upstream
+  content filter blocks, including their terminating punctuation. The Claude
+  Agent SDK continues the identity sentence with a comma instead of a period
+  ("...official CLI for Claude, running within the Claude Agent SDK."), so the
+  period-terminated pattern never matched a real SDK request and the
+  replacement never ran. The upstream answered every turn with 400 / code
+  11128 "Illegal API invocation from an unapproved channel", while a plain
+  `/v1/chat/completions` smoke test with a short system prompt kept working —
+  the failure only shows up with the real system prompt, which is why it
+  looked like "the first request works, then every later one is blocked".
+- The identity rewrite now matches the invariant substring
+  `Anthropic's official CLI for Claude` instead of the whole sentence, so both
+  shapes are covered and a future suffix cannot slip past it again.
+- Adds the second blocked string the real prompt carries: the feedback line
+  `To give feedback, users should report the issue at
+  https://github.com/anthropics/claude-code/issues`, which the upstream
+  rejects as one exact sentence anywhere in the prompt. It is reworded to
+  `...report the issue in the project's issue tracker`, which keeps the meaning
+  and drops the URL.
+- Verified against the live gateway with the real 31 KB system prompt:
+  400 / code 11128 before, 200 + normal SSE after; three consecutive
+  `/v1/messages` turns all 200. `sanitize_test.go` covers both variants plus a
+  combined-prompt case that would have failed before.
+
+### Responses and SSE compatibility
+
+- Parse upstream SSE frames consistently for streamed and folded completions:
+  ignore heartbeat/progress/metadata events, join multiline data, and propagate
+  malformed completion JSON and explicit error events. Compact multiline JSON
+  before forwarding it as one `data:` line to cross-format translators.
+- Progress-only streams no longer count as a successful model response. Folded
+  completion detection requires choices rather than usage-only events.
+- Retain the original Responses request on the streaming path and restore
+  translated developer instruction roles by matching original text and order,
+  while retaining user messages, mixed content, and tool history.
+- Carry upstream HTTP status through executor error envelopes and send async
+  failures through the host stream error field instead of a completion payload.
+
+## 0.9.8 (unreleased)
+
+### Intl OAuth login completes again — the issuer is chosen by realm (issue #5)
+
+- **Login no longer hardcodes the CN issuer.** `handleStartLogin` issued the state on
+  `copilot.tencent.com/v2/plugin/auth/state?platform=CLI` unconditionally, and that issuer's
+  `authUrl` is served by `copilot.tencent.com/login` — a page that redirects the browser to
+  `codebuddy.cn`, where a Global (Intl) account cannot finish the flow. Intl logins now issue
+  on `www.codebuddy.ai/v2/plugin/auth/state?platform=ide`, whose `authUrl` stays on `.ai`.
+  Verified against production on 2026-10-17: the `.ai` state endpoint answers with
+  `https://www.codebuddy.ai/login?platform=ide&state=…`, and `/v2/plugin/auth/token` +
+  `/v2/plugin/login/account` answer on that host as well (token: `code 11217 login ing` while
+  pending; account: 401 until the bearer exists).
+- **The realm is carried through the flow.** The poll (token + account) now targets the
+  gateway that minted the state instead of a fixed host, and both requests present the
+  issuing realm's `Origin`/`Referer` — `commonHeaders()` hardcodes the CN pair, which is not
+  the browser request the Intl gateway expects. The start response keeps `logo` and adds
+  `region` to its metadata.
+- **`oauth_region` selects the issuer** (`intl` default, `cn`; env `WB_OAUTH_REGION`; the
+  panel's toolbar selector writes it at runtime, with the same contract as the check-in /
+  daily-bonus toggles — the value from `config.yaml` wins again after a restart). Unknown
+  values resolve to `intl`: the CN issuer is exactly what strands an Intl account, so a typo
+  must not fall back onto it. CN logins are unchanged (`platform=CLI`, `copilot.tencent.com`).
+- **`POST /v0/management/plugins/workbuddy/oauth/region`** reads (`{}`) or sets
+  (`{"region":"intl"|"cn"}`) the region; an unknown region answers 400 with the panel's usual
+  `{"error": …}` body and leaves the region untouched.
+- **Tests:** `oauth_login_test.go` drives both realms against `httptest` issuers — the Intl
+  start must hand back a `codebuddy.ai` login page and contact only the Intl host, the poll
+  must hit the issuer of the state (token + account) for either realm, and the other realm's
+  issuer must stay untouched. Plus the origin-header rule, the Intl fallback, the
+  `config.yaml` → runtime path (env fallback, junk value) and the management route.
 ## 0.9.7
 
 ### Dead code sweep

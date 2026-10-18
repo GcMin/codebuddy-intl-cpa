@@ -688,6 +688,12 @@ type wbStateFile struct {
 	// once its 14-day window ends, so shape detection alone cannot tell "never
 	// got it" from "got it and it expired" — this is the missing half.
 	TrialClaimed map[string]bool `json:"trial_claimed,omitempty"`
+	// CacheTrace is the panel's explicit hash-tracing choice. nil means "no
+	// choice yet", so the WB_CACHE_TRACE environment default applies; a
+	// non-nil value wins over the environment and survives plugin restarts.
+	// Unlike the scheduler toggles this one persists: it starts a debugging
+	// session the user expects to still be on after a restart.
+	CacheTrace *bool `json:"cache_trace,omitempty"`
 }
 
 // rememberTrialClaimed persists the fact that an account already used the
@@ -838,6 +844,7 @@ func loadState() (wbStateFile, error) {
 		// disk the whole time. TestLoadStateCopiesEveryField enforces this.
 		DailyReport:  cloneDailyReport(state.DailyReport),
 		TrialClaimed: cloneBoolMap(state.TrialClaimed),
+		CacheTrace:   cloneBoolPtr(state.CacheTrace),
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)
@@ -870,6 +877,16 @@ func cloneBoolMap(in map[string]bool) map[string]bool {
 		out[k] = v
 	}
 	return out
+}
+
+// cloneBoolPtr duplicates a *bool so a caller can never reach into the state
+// cache through the pointer loadState handed out.
+func cloneBoolPtr(in *bool) *bool {
+	if in == nil {
+		return nil
+	}
+	v := *in
+	return &v
 }
 
 // mutateState applies fn to a freshly loaded state and persists the result

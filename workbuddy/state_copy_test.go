@@ -59,6 +59,7 @@ func TestLoadStateCopiesEveryField(t *testing.T) {
 			},
 		},
 		TrialClaimed: map[string]bool{"auth-two": true},
+		CacheTrace:   boolPtr(true),
 	}
 
 	raw, err := json.MarshalIndent(&want, "", "  ")
@@ -95,6 +96,7 @@ func TestLoadStateCopiesEveryField(t *testing.T) {
 	got.TrialClaimed["auth-three"] = true
 	got.Realm[realmGlobal] = mmSettings{Disabled: []string{"mutated"}}
 	got.DailyReport.Rows["auth-nine"] = persistedDailyRow{Day: "2026-01-01"}
+	*got.CacheTrace = false
 	again, err := loadState()
 	if err != nil {
 		t.Fatalf("loadState (second call): %v", err)
@@ -107,5 +109,8 @@ func TestLoadStateCopiesEveryField(t *testing.T) {
 	}
 	if _, ok := again.DailyReport.Rows["auth-nine"]; ok {
 		t.Error("loadState returned a live reference to DailyReport.Rows: mutating it changed the cache")
+	}
+	if again.CacheTrace == nil || !*again.CacheTrace {
+		t.Error("loadState returned a live reference to CacheTrace: mutating it changed the cache")
 	}
 }
