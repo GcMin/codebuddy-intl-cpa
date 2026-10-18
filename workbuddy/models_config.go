@@ -694,6 +694,11 @@ type wbStateFile struct {
 	// Unlike the scheduler toggles this one persists: it starts a debugging
 	// session the user expects to still be on after a restart.
 	CacheTrace *bool `json:"cache_trace,omitempty"`
+	// Warnings records accounts the upstream has put under risk control (code
+	// 11140) so the panel can keep showing a badge instead of "Active" after a
+	// restart. Keyed by every identity the account is reachable by (auth_index,
+	// auth id, UID) so a lookup only needs one of them.
+	Warnings map[string]accountWarning `json:"warnings,omitempty"`
 }
 
 // rememberTrialClaimed persists the fact that an account already used the
@@ -845,6 +850,7 @@ func loadState() (wbStateFile, error) {
 		DailyReport:  cloneDailyReport(state.DailyReport),
 		TrialClaimed: cloneBoolMap(state.TrialClaimed),
 		CacheTrace:   cloneBoolPtr(state.CacheTrace),
+		Warnings:     cloneAccountWarnings(state.Warnings),
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)
@@ -887,6 +893,19 @@ func cloneBoolPtr(in *bool) *bool {
 	}
 	v := *in
 	return &v
+}
+
+// cloneAccountWarnings duplicates the risk-control warning map so a caller
+// never shares storage with the state cache.
+func cloneAccountWarnings(in map[string]accountWarning) map[string]accountWarning {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]accountWarning, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // mutateState applies fn to a freshly loaded state and persists the result

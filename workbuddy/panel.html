@@ -61,6 +61,7 @@ button.sec{background:var(--btn-sec);color:var(--fg)}button.sec:hover{background
 .uid{color:var(--mut);font-size:11px;font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:12px}
 .badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-border)}
 .badge.exhausted{background:var(--err-soft);color:var(--err);border:1px solid var(--err-border)}
+.badge.warn{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border)}
 .badge.pro{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border)}
 .badge.cn{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-border)}
 .badge.global{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-border)}
@@ -749,6 +750,7 @@ const PANEL_EN = {
   "\" title=\"刷新积分\">刷新</button>": "\" title=\"Refresh credits\">Refresh</button>",
   "<span class=\"badge disabled\">已禁用</span>": "<span class=\"badge disabled\">Disabled</span>",
   "<span class=\"badge exhausted\">已耗尽</span>": "<span class=\"badge exhausted\">Exhausted</span>",
+  "可能已封禁": "Restricted",
   "<div class=\"row\"><span class=\"k\">错误</span><span class=\"v err\">": "<div class=\"row\"><span class=\"k\">Error</span><span class=\"v err\">",
   "加载积分失败": "Failed to load credits",
   "\n    <div class=\"pb-meta\" style=\"margin-top:10px\">按地区：国内可用 ": "\n    <div class=\"pb-meta\" style=\"margin-top:10px\">By region: CN available ",
@@ -1348,7 +1350,10 @@ function card(a){
   const concBadge=a.concurrency_known
     ? `<span class="badge conc${(a.concurrency_current||0)>=(a.concurrency_limit||0)?" full":((a.concurrency_current||0)>0?" busy":"")}" data-conc="${esc(a.concurrency_key||a.auth_index)}" title="${tr("当前并发 / 上限（每账号同时进行中的请求数）")}">${(a.concurrency_current||0)}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span>`
     : "";
-  const badges=(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
+  const warnBadge=a.warning
+    ? `<span class="badge warn" title="${esc(`${a.warning.code||""} · ${a.warning.reason||""} · ${a.warning.since||""}`)}">${tr("可能已封禁")}</span>`
+    : "";
+  const badges=(disabled?`${tr("<span class=\"badge disabled\">已禁用</span>")}`:"")+(exhausted?`${tr("<span class=\"badge exhausted\">已耗尽</span>")}`:"")+warnBadge+regionBadge+`<span class="badge ${plan}">${esc(planLabel(a.plan))}</span>`+concBadge;
   const displayName=esc(a.nickname||a.label||a.name);
   return `<div class="card" data-region="${region}" data-auth="${esc(a.auth_index)}">
   <h2><span class="cname" title="${displayName}">${displayName}</span><span class="cbadges">${badges}</span></h2>
@@ -1657,6 +1662,7 @@ async function refreshPicked(btn){
       const d=await api(`/credits?auth_index=${encodeURIComponent(a.auth_index)}`);
       const acct=(d.accounts||[])[0]||d;
       if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; if(acct.plan) a.plan=acct.plan; }
+      if(acct) a.warning=acct.warning||null;
       if(d.error||(acct&&acct.error)){ a.error=d.error||acct.error; fail++; } else ok++;
     }catch(e){ fail++; }
   }
@@ -1733,6 +1739,7 @@ function lazyLoadCredits(accounts){
           if(acct.trial_claimed!=null) a.trial_claimed=acct.trial_claimed;
           if(acct.plan) a.plan=acct.plan;
         }
+        if(acct) a.warning=acct.warning||null;
         // The daily piece is why this fetch may have run at all: keep it, or the
         // row keeps showing "no data" while the value sits in the response.
         if(acct&&acct.checkin) a.checkin=acct.checkin;
@@ -1747,6 +1754,7 @@ function lazyLoadCredits(accounts){
             .then(d=>{
               const acct=(d.accounts||[])[0]||d;
               if(acct&&acct.credits){ a.credits=acct.credits; a.exhausted=acct.exhausted; }
+              if(acct) a.warning=acct.warning||null;
               if(acct&&acct.plan) a.plan=acct.plan;
               if(acct&&acct.checkin) a.checkin=acct.checkin;
               if(acct&&acct.daily) a.daily=acct.daily;

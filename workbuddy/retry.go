@@ -563,11 +563,8 @@ func classifyNonStream(_ []byte, err error) (attemptOutcome, int, string, error)
 	if status == 0 {
 		return outcomeStop, 0, "", err // transport error — account-independent
 	}
-	if isAccountExhaustedResponse(status, body) {
-		return outcomeAccountExhausted, status, body, err
-	}
-	if isRateLimitResponse(status, body) {
-		return outcomeRateLimited, status, body, err
+	if outcome := classifyAccountFailure(status, body); outcome != outcomeStop {
+		return outcome, status, body, err
 	}
 	return outcomeStop, status, body, err
 }
@@ -603,10 +600,8 @@ func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, 
 			if err == nil {
 				resetCandidateCooldown(cand)
 			} else if !emitted {
-				if isAccountExhaustedResponse(status, err.Error()) {
-					markCandidateUnavailable(cand, outcomeAccountExhausted, err.Error())
-				} else if isRateLimitResponse(status, err.Error()) {
-					markCandidateUnavailable(cand, outcomeRateLimited, err.Error())
+				if outcome := classifyAccountFailure(status, err.Error()); outcome != outcomeStop {
+					markCandidateUnavailable(cand, outcome, err.Error())
 				}
 			}
 			return emitted, status, err
@@ -619,12 +614,7 @@ func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, 
 			return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 				Emitted: true, Status: status, Body: err.Error(), Err: err}
 		}
-		outcome := outcomeStop
-		if isAccountExhaustedResponse(status, err.Error()) {
-			outcome = outcomeAccountExhausted
-		} else if isRateLimitResponse(status, err.Error()) {
-			outcome = outcomeRateLimited
-		}
+		outcome := classifyAccountFailure(status, err.Error())
 		if outcome != outcomeStop {
 			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, err.Error(), err
@@ -665,6 +655,13 @@ func unavailableFailoverResult(res failoverResult, busy ...bool) failoverResult 
 // disables/deletes an auth file; replenished accounts can be retried later.
 func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body string) {
 	if c == nil {
+		return
+	}
+	// Risk control is account-wide and does not expire on its own: flag it for
+	// the panel and park the account on the long cooldown instead of treating
+	// the failure as a soft 429 that clears itself in ten minutes.
+	if isRiskControlResponse(0, body) {
+		markCandidateRiskBlocked(c, body)
 		return
 	}
 	reason := "429"

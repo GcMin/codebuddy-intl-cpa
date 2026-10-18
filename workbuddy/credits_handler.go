@@ -260,6 +260,9 @@ func handleCreditsQuery(req pluginapi.ManagementRequest) map[string]any {
 				}
 			}
 			acct["exhausted"] = isCreditsExhausted(cr)
+			if w, ok := accountWarningFor(authIndex, f.ID, sa.Account.UID); ok {
+				acct["warning"] = w
+			}
 			if isGlobalDomain(sa.Auth.Domain) {
 				acct["trial_claimed"] = hasTrialPack(cr) || trialClaimedRemembered(authIndex)
 			}

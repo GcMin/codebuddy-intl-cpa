@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Accounts the upstream put under risk control now say so
+
+- The upstream can answer every chat call with `11140` ("request illegal",
+  "account has been restricted due to unusual activity") while billing,
+  check-in and the OAuth endpoints keep working for the same credential. Nothing
+  on our side clears that, and the account kept looking "Active" in the panel
+  while every request routed to it failed.
+- Such an account is flagged with a **Restricted** badge (code, reason and the
+  first sighting in the tooltip), recorded under every identity the account is
+  known by (auth_index, auth id, UID) and persisted in `workbuddy-state.json`,
+  so the badge survives a plugin or host restart.
+- The flag parks the account on a six-hour cooldown with its own reason
+  (`risk_control`), so a soft 429 cannot shorten it, and the attempt loops now
+  treat 11140 as "skip this account, try the next" instead of a terminal
+  failure — one blocked account no longer fails a turn when a healthy account is
+  eligible.
+- Detection is tested independently of the message language (code first,
+  wording as a fallback) and shares one classifier (`classifyAccountFailure`)
+  across the three attempt loops, so a future upstream code only has to be
+  classified once. Verified against the live CN account that draws 11140:
+  billing and OAuth answer 200 for the same token while chat is refused.
+
 ### The client identity the upstream validates (IDE vs CLI, tracing family)
 
 - The upstream checks *who* the caller claims to be, not only the bearer token:

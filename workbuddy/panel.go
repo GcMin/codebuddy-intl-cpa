@@ -40,6 +40,10 @@ type wbAccount struct {
 	Checkin        *checkinSummary `json:"checkin,omitempty"`
 	TrialClaimed   bool            `json:"trial_claimed,omitempty"` // Global: expert trial already claimed
 	Error          string          `json:"error,omitempty"`
+	// Warning is set when the upstream has the account under risk control
+	// (code 11140): billing and OAuth still work, chat does not. The panel
+	// shows it instead of leaving the account looking Active.
+	Warning *accountWarning `json:"warning,omitempty"`
 }
 
 // credits/checkin/plan fields are left empty — the panel renders skeletons
@@ -193,6 +197,10 @@ func buildDashboardEx(force, fetchCredits bool) map[string]any {
 			acct.Nickname = sa.Account.Nickname
 			acct.UID = sa.Account.UID
 			acct.Region = accountRegion(sa)
+			if w, ok := accountWarningFor(f.AuthIndex, f.ID, sa.Account.UID); ok {
+				w := w
+				acct.Warning = &w
+			}
 			gateKey := accountGateKey(&failoverCandidate{AuthID: f.AuthIndex, Auth: sa})
 			acct.ConcurrencyCurrent = inFlight[gateKey]
 			acct.ConcurrencyKey = gateKey

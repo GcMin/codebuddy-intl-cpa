@@ -969,11 +969,8 @@ func handleExecStream(raw []byte) ([]byte, error) {
 				if statusCode == 0 {
 					return outcomeStop, 0, "", err
 				}
-				if isAccountExhaustedResponse(statusCode, err.Error()) {
-					return outcomeAccountExhausted, statusCode, err.Error(), err
-				}
-				if isRateLimitResponse(statusCode, err.Error()) {
-					return outcomeRateLimited, statusCode, err.Error(), err
+				if outcome := classifyAccountFailure(statusCode, err.Error()); outcome != outcomeStop {
+					return outcome, statusCode, err.Error(), err
 				}
 				return outcomeStop, statusCode, err.Error(), err
 			}
