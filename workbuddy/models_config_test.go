@@ -878,3 +878,46 @@ func TestLoadStateCarriesEveryTopLevelField(t *testing.T) {
 		t.Fatalf("Update lost: %+v", got.Update)
 	}
 }
+
+func TestIsProOnlyModel(t *testing.T) {
+	cases := []struct {
+		realm string
+		id    string
+		want  bool
+	}{
+		{realmGlobal, "gpt-6.1-sol", true},
+		{realmGlobal, "gpt-6-astra", true},
+		{realmGlobal, "gpt-5.3-codex", true},
+		{realmGlobal, "glm-5.3", false},
+		{realmGlobal, "deepseek-v4.1-flash", false},
+		{realmGlobal, "kimi-k3", false},
+		{realmGlobal, "", false},
+		// The CN catalog has no verified pro-only family yet; a GPT id there must
+		// not inherit the Global rule.
+		{realmCN, "gpt-6.1-sol", false},
+	}
+	for _, tc := range cases {
+		if got := isProOnlyModel(tc.realm, tc.id); got != tc.want {
+			t.Errorf("isProOnlyModel(%q, %q) = %v, want %v", tc.realm, tc.id, got, tc.want)
+		}
+	}
+}
+
+// The panel reads pro_only to mark a model as paid-plan only; it must come from
+// the same rule for both the live upstream rows and the archived catalog rows.
+func TestBuildModelRowsMarksProOnly(t *testing.T) {
+	rows := buildModelRows(realmGlobal, []upstreamModel{
+		{modelDef: modelDef{ID: "gpt-6.1-sol", Name: "GPT-6.1-Sol"}},
+		{modelDef: modelDef{ID: "glm-5.3", Name: "GLM-5.3"}},
+	}, nil)
+	byID := make(map[string]mmModelRow, len(rows))
+	for _, r := range rows {
+		byID[r.ID] = r
+	}
+	if r, ok := byID["gpt-6.1-sol"]; !ok || !r.Pro {
+		t.Errorf("gpt-6.1-sol row = %+v, want Pro=true", r)
+	}
+	if r, ok := byID["glm-5.3"]; !ok || r.Pro {
+		t.Errorf("glm-5.3 row = %+v, want Pro=false", r)
+	}
+}

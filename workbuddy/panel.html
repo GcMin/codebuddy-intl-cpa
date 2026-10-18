@@ -899,6 +899,7 @@ const PANEL_EN = {
   " 条 / 共 ": " of ",
   " 条": " results",
   " 次": " req",
+  "仅 Pro：免费账号会被上游拒绝（11158 not allowed for user type personal_free_user）— 只有付费 / Pro 账号能调用。": "Pro only: the upstream refuses free accounts (11158 not allowed for user type personal_free_user) — paid / Pro accounts can call it.",
   "正常": "Active",
   "已过期": "expired",
   "个积分包": "credit packages",
@@ -2697,6 +2698,7 @@ function mmCtxCell(m,realm){
 }
 function mmBadges(m){
   let s="";
+  if(m.pro_only) s+='<span class="badge warnb" title="'+esc(tr("仅 Pro：免费账号会被上游拒绝（11158 not allowed for user type personal_free_user）— 只有付费 / Pro 账号能调用。"))+'">Pro</span>';
   if(m.tier) s+='<span class="badge tier">tier</span>';
   if(m.effort) s+='<span class="badge warnb" title="'+esc(tr("能响应但拒绝默认 reasoning_effort（11150）— 需要特殊 effort。Pi/cline 可能调不通这个模型。"))+'">effort?</span>';
   if(m.hidden) s+=m.verified

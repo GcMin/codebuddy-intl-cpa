@@ -1093,6 +1093,11 @@ type mmModelRow struct {
 	OwnedBy      string `json:"owned_by,omitempty"`
 	AllExhausted bool   `json:"all_exhausted,omitempty"`
 	New          bool   `json:"new,omitempty"`
+	// Pro marks a model the upstream refuses for free-tier accounts (code
+	// 11158 "model ... is not allowed for user type [personal_free_user]"). The
+	// panel shows it so a toggle that cannot work on the selected account is not
+	// offered as if it could.
+	Pro bool `json:"pro_only,omitempty"`
 }
 
 // accountsForRealm lists the AuthIDs of one realm. Seam for tests: the host
@@ -1243,6 +1248,30 @@ func customRows(custom []mmCustomModel) []map[string]any {
 	return out
 }
 
+// proOnlyPrefixes lists the model ids an account must be on a paid plan to use,
+// per realm. Verified live on 2026-10-18: the whole Global GPT family answers
+// 11158 ("model [x] is not allowed for user type [personal_free_user]") on free
+// accounts while GLM/Kimi/DeepSeek/Hy/Step answer 200. Prefix matching keeps a
+// new GPT release covered without a code change.
+var proOnlyPrefixes = map[string][]string{
+	realmGlobal: {"gpt-"},
+	realmCN:     {},
+}
+
+// isProOnlyModel reports whether the upstream requires a paid plan for a model.
+func isProOnlyModel(realm, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, prefix := range proOnlyPrefixes[realm] {
+		if strings.HasPrefix(id, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildModelRows merges catalog ∪ upstream ∪ custom into the panel row list.
 // Upstream rows carry the live multiplier and the max context; catalog entries
 // the upstream no longer returns are marked stale (archived multiplier when
@@ -1264,6 +1293,7 @@ func buildModelRows(realm string, upstream []upstreamModel, custom []mmCustomMod
 			Tier:     u.Tier,
 			Util:     u.Util,
 			New:      !catalogHas(realm, u.ID),
+			Pro:      isProOnlyModel(realm, u.ID),
 		})
 	}
 	for _, c := range catalogModels(realm) {
@@ -1281,6 +1311,7 @@ func buildModelRows(realm string, upstream []upstreamModel, custom []mmCustomMod
 			Tier:     c.Tier,
 			Util:     c.Util,
 			Stale:    true,
+			Pro:      isProOnlyModel(realm, c.ID),
 		})
 	}
 	for _, c := range custom {
