@@ -4,16 +4,18 @@
 
 ### Pro-only models are labelled as such
 
-- The upstream refuses the whole Global GPT family on a free account with
-  `11158 "model [x] is not allowed for user type [personal_free_user]"` (verified
-  live on 2026-10-18: GPT 500/503 while GLM, Kimi, DeepSeek, Hy and Step answer
-  200). The model manager still offered those rows like any other, so the only
-  way to learn about the limit was a failed request.
-- Every row now carries `pro_only` from one rule (`isProOnlyModel`, prefix match
-  per realm, so a new GPT release is covered without a code change) and the
-  panel renders a **Pro** badge with the reason in its tooltip. Global GPT is
-  marked; the CN catalog stays unmarked until a pro-only family there is
-  verified.
+- Free accounts are refused some models with `11158 "model [x] is not allowed
+  for user type [personal_free_user]"`, and the model manager offered those rows
+  like any other — the only way to learn about the limit was a failed request.
+- The line is not "all GPT": measured on 2026-10-18 against a free Global
+  account through the panel tester, **gpt-5.3-codex answers 200** while
+  gpt-5.4, gpt-5.5, the 5.6 family and the 6.x family answer 11158; Claude,
+  Gemini, DeepSeek, GLM, Kimi, Hy and Step all answer 200. A prefix rule would
+  have mislabelled the free model, so `isProOnlyModel` is an explicit measured
+  list per realm — a new GPT release stays unmarked until it is measured.
+- Every row carries `pro_only`, and the panel renders a **Pro** badge with the
+  upstream reason in its tooltip. The CN catalog stays unmarked until a
+  pro-only model there is measured.
 - Still open, and deliberately not claimed here: routing does not yet skip a
   pro-only model for a free account. That is the 0.9.9 tier-gating work (plus
   classifying 11158 in the failover path).

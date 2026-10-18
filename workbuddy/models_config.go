@@ -1248,28 +1248,38 @@ func customRows(custom []mmCustomModel) []map[string]any {
 	return out
 }
 
-// proOnlyPrefixes lists the model ids an account must be on a paid plan to use,
-// per realm. Verified live on 2026-10-18: the whole Global GPT family answers
-// 11158 ("model [x] is not allowed for user type [personal_free_user]") on free
-// accounts while GLM/Kimi/DeepSeek/Hy/Step answer 200. Prefix matching keeps a
-// new GPT release covered without a code change.
-var proOnlyPrefixes = map[string][]string{
-	realmGlobal: {"gpt-"},
-	realmCN:     {},
+// proOnlyModels lists the model ids a free account cannot call, per realm.
+//
+// Measured on 2026-10-18 against a free Global account through the panel tester
+// (which speaks the same client identity as a chat call):
+//
+//	refused with 11158: gpt-5.4, gpt-5.5, gpt-5.6-luna, gpt-5.6-sol,
+//	                    gpt-5.6-terra, gpt-6-astra, gpt-6-luna, gpt-6-sol, gpt-6.1-sol
+//	answered 200 (free): gpt-5.3-codex (!), claude-opus-4.7-1m, claude-opus-4.6,
+//	                    gemini-3.1-pro, deepseek-v4.1-flash, glm-5.2, glm-5.3,
+//	                    glm-5.3-flash, kimi-k2.6, kimi-k2.8-preview, kimi-k3,
+//	                    hy3, hy4-preview, step-5-preview
+//
+// A prefix rule would have mislabelled the free gpt-5.3-codex, so the list is
+// explicit: a new GPT release stays unmarked until it is measured. That is the
+// safe direction — saying nothing beats the panel claiming Pro wrongly.
+var proOnlyModels = map[string]map[string]bool{
+	realmGlobal: {
+		"gpt-5.4":       true,
+		"gpt-5.5":       true,
+		"gpt-5.6-luna":  true,
+		"gpt-5.6-sol":   true,
+		"gpt-5.6-terra": true,
+		"gpt-6-astra":   true,
+		"gpt-6-luna":    true,
+		"gpt-6-sol":     true,
+		"gpt-6.1-sol":   true,
+	},
 }
 
 // isProOnlyModel reports whether the upstream requires a paid plan for a model.
 func isProOnlyModel(realm, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	for _, prefix := range proOnlyPrefixes[realm] {
-		if strings.HasPrefix(id, prefix) {
-			return true
-		}
-	}
-	return false
+	return proOnlyModels[realm][strings.TrimSpace(id)]
 }
 
 // buildModelRows merges catalog ∪ upstream ∪ custom into the panel row list.

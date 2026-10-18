@@ -887,7 +887,10 @@ func TestIsProOnlyModel(t *testing.T) {
 	}{
 		{realmGlobal, "gpt-6.1-sol", true},
 		{realmGlobal, "gpt-6-astra", true},
-		{realmGlobal, "gpt-5.3-codex", true},
+		{realmGlobal, "gpt-5.4", true},
+		{realmGlobal, "gpt-5.6-terra", true},
+		// Measured free on 2026-10-18: a prefix rule ("gpt-") would mislabel it.
+		{realmGlobal, "gpt-5.3-codex", false},
 		{realmGlobal, "glm-5.3", false},
 		{realmGlobal, "deepseek-v4.1-flash", false},
 		{realmGlobal, "kimi-k3", false},
