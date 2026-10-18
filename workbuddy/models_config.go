@@ -699,6 +699,10 @@ type wbStateFile struct {
 	// restart. Keyed by every identity the account is reachable by (auth_index,
 	// auth id, UID) so a lookup only needs one of them.
 	Warnings map[string]accountWarning `json:"warnings,omitempty"`
+	// Tiers records the plan an account is on (free/pro) so routing can keep a
+	// pro-only model away from a free account instead of learning from a 11158
+	// refusal every time. Same keying as Warnings.
+	Tiers map[string]accountTierRec `json:"tiers,omitempty"`
 }
 
 // rememberTrialClaimed persists the fact that an account already used the
@@ -851,6 +855,7 @@ func loadState() (wbStateFile, error) {
 		TrialClaimed: cloneBoolMap(state.TrialClaimed),
 		CacheTrace:   cloneBoolPtr(state.CacheTrace),
 		Warnings:     cloneAccountWarnings(state.Warnings),
+		Tiers:        cloneAccountTiers(state.Tiers),
 	}
 	for k, v := range state.Realm {
 		out.Realm[k] = cloneSettings(v)
@@ -902,6 +907,19 @@ func cloneAccountWarnings(in map[string]accountWarning) map[string]accountWarnin
 		return nil
 	}
 	out := make(map[string]accountWarning, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+// cloneAccountTiers duplicates the plan-tier map so a caller never shares
+// storage with the state cache.
+func cloneAccountTiers(in map[string]accountTierRec) map[string]accountTierRec {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]accountTierRec, len(in))
 	for k, v := range in {
 		out[k] = v
 	}

@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Pro-only models are kept away from free accounts (plan gating)
+
+- 11158 ("model [x] is not allowed for user type [personal_free_user]") was
+  treated as a generic upstream error: the client saw a 500, the model was
+  retried on the same free account forever, and the host then marked the model
+  `auth_unavailable` for a minute or two (CB-051).
+- The plan behind that code is already known — `/v2/billing/meter/get-payment-type`
+  answers `free`, which is where the panel's badge comes from — and 11158 names
+  the user type outright, so the plugin now remembers the tier per account
+  (persisted in `workbuddy-state.json`, keyed by auth_index/auth id/UID) and
+  learns it from the refusal when no plan was fetched yet. A trial pack is
+  deliberately not treated as Pro: measured on 2026-10-18, an account holding
+  the "Pro Plan Trial" pack still reports `paymentType=free` and still draws
+  11158.
+- Routing skips a pro-only model on an account known to be free, so the request
+  goes to a paid account if one is eligible instead of burning a refusal first.
+  The refused model is parked per account for 30 minutes.
+- When every eligible account is free, the client gets
+  `400 model <id> requires a Pro account (all eligible accounts are on the free
+  plan)` instead of a 500 or a transient 503.
+- `classifyAccountFailure` gained `outcomeModelNotAllowed`, handled by both
+  failover loops, so the three-way split (credit / risk control / plan) lives in
+  one classifier.
+
 ### Pro-only models are labelled as such
 
 - Free accounts are refused some models with `11158 "model [x] is not allowed

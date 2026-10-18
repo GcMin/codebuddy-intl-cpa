@@ -182,6 +182,8 @@ func classifyAccountFailure(status int, body string) attemptOutcome {
 		return outcomeAccountExhausted
 	case isRiskControlResponse(status, body):
 		return outcomeRateLimited
+	case upstreamErrorCode(body) == modelNotAllowedCode:
+		return outcomeModelNotAllowed
 	case isRateLimitResponse(status, body):
 		return outcomeRateLimited
 	}

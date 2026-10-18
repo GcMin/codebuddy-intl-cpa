@@ -97,7 +97,15 @@ func cachedAccountDetails(authID string, sa *storedAuth, force bool) (plan strin
 	}
 	var daily *growthDaily
 	wg.Add(4)
-	go func() { defer wg.Done(); plan = fetchPaymentType(sa) }()
+	go func() {
+		defer wg.Done()
+		plan = fetchPaymentType(sa)
+		// Remember the tier: routing reads it to keep pro-only models away from
+		// free accounts instead of learning from a 11158 refusal every time.
+		if plan != "" {
+			rememberAccountPlan([]string{authID, sa.Account.UID}, plan)
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		// Read-only heatmap probe: tells whether today already counts, which is
@@ -188,4 +196,3 @@ func pruneAccountCacheSoftCap(capN int) {
 		accountCache.Delete(items[i].key)
 	}
 }
-

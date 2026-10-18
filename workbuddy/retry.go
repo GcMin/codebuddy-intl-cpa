@@ -486,6 +486,7 @@ const (
 	outcomeSuccess          attemptOutcome = iota // usable result
 	outcomeRateLimited                            // soft 429 — try next account
 	outcomeAccountExhausted                       // explicit credit rejection — skip + try next
+	outcomeModelNotAllowed                        // model gated by plan (11158) — skip + try next
 	outcomeStop                                   // transport/business error — do NOT retry
 )
 
@@ -514,7 +515,14 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contex
 func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
+	tierBlocked, tierBlockedModel := false, ""
 	for _, cand := range chatSessions.preferred(sessionKey, cands) {
+		// A pro-only model on an account already known to be free: skip it
+		// without a round-trip and remember why, so the final error can say so.
+		if blocked, model := candidateProOnlyBlocked(cand); blocked {
+			tierBlocked, tierBlockedModel = true, model
+			continue
+		}
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
 		if errors.Is(admissionErr, errAccountBusy) {
 			busy = true
@@ -533,7 +541,7 @@ func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemp
 			defer func() { chatSessions.finish(sessionKey, binding, outcome == outcomeSuccess) }()
 			outcome, status, body, err = attemptFn(cand)
 			// Publish quarantine before another request can take the freed slot.
-			if outcome == outcomeRateLimited || outcome == outcomeAccountExhausted {
+			if outcome == outcomeRateLimited || outcome == outcomeAccountExhausted || outcome == outcomeModelNotAllowed {
 				markCandidateUnavailable(cand, outcome, body)
 			} else if outcome == outcomeSuccess {
 				resetCandidateCooldown(cand)
@@ -546,10 +554,23 @@ func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemp
 		case outcomeRateLimited, outcomeAccountExhausted:
 			res.Outcome, res.AuthID = outcome, cand.AuthID
 			res.Status, res.Body, res.Err = status, body, err
+		case outcomeModelNotAllowed:
+			// The upstream refused this model for this account's plan. Keep
+			// failing over — a paid account later in the list can serve it — and
+			// replace the raw envelope with a message the client can act on.
+			res.Outcome, res.AuthID = outcome, cand.AuthID
+			res.Status, res.Body = http.StatusBadRequest, proTierBlockedMessage(cand.RateModel)
+			res.Err = &upstreamStatusError{status: res.Status, body: res.Body}
 		default: // outcomeStop
 			return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 				Status: status, Body: body, Err: err}
 		}
+	}
+	if res.Err == nil && tierBlocked {
+		msg := proTierBlockedMessage(tierBlockedModel)
+		return failoverResult{Outcome: outcomeModelNotAllowed, Tried: res.Tried,
+			Status: http.StatusBadRequest, Body: msg,
+			Err: &upstreamStatusError{status: http.StatusBadRequest, body: msg}}
 	}
 	return unavailableFailoverResult(res, busy)
 }
@@ -579,7 +600,12 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
+	tierBlocked, tierBlockedModel := false, ""
 	for _, cand := range chatSessions.preferred(sessionKey, cands) {
+		if blocked, model := candidateProOnlyBlocked(cand); blocked {
+			tierBlocked, tierBlockedModel = true, model
+			continue
+		}
 		release, admissionErr := admitCandidateAttempt(attemptContext(contexts), cand)
 		if errors.Is(admissionErr, errAccountBusy) {
 			busy = true
@@ -617,11 +643,22 @@ func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, 
 		outcome := classifyAccountFailure(status, err.Error())
 		if outcome != outcomeStop {
 			res.Outcome, res.AuthID = outcome, cand.AuthID
-			res.Status, res.Body, res.Err = status, err.Error(), err
+			if outcome == outcomeModelNotAllowed {
+				res.Status, res.Body = http.StatusBadRequest, proTierBlockedMessage(cand.RateModel)
+			} else {
+				res.Status, res.Body = status, err.Error()
+			}
+			res.Err = &upstreamStatusError{status: res.Status, body: res.Body}
 			continue
 		}
 		return failoverResult{Outcome: outcomeStop, AuthID: cand.AuthID, Tried: res.Tried,
 			Status: status, Body: err.Error(), Err: err}
+	}
+	if res.Err == nil && tierBlocked {
+		msg := proTierBlockedMessage(tierBlockedModel)
+		return failoverResult{Outcome: outcomeModelNotAllowed, Tried: res.Tried,
+			Status: http.StatusBadRequest, Body: msg,
+			Err: &upstreamStatusError{status: http.StatusBadRequest, body: msg}}
 	}
 	return unavailableFailoverResult(res, busy)
 }
@@ -662,6 +699,13 @@ func markCandidateUnavailable(c *failoverCandidate, outcome attemptOutcome, body
 	// the failure as a soft 429 that clears itself in ten minutes.
 	if isRiskControlResponse(0, body) {
 		markCandidateRiskBlocked(c, body)
+		return
+	}
+	// 11158 is the plan gate ("not allowed for user type [personal_free_user]"):
+	// remember the account as free and park this model for it, so the next
+	// request skips instead of re-learning.
+	if upstreamErrorCode(body) == modelNotAllowedCode {
+		markCandidateModelNotAllowed(c)
 		return
 	}
 	reason := "429"
