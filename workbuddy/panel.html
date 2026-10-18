@@ -1502,6 +1502,10 @@ function rowHTML(a){
   const picked=acctView.picked.has(a.auth_index)?"picked":"";
   const isOpen=acctView.expanded.has(a.auth_index);
   const t=acctView.today[a.auth_index]||{};
+  // Risk-control flag: the auth file is still active, so the Status column alone
+  // would keep saying "Active" while every chat on this account is refused.
+  const warn=a.warning;
+  const warnTitle=warn?`${warn.code||""}${warn.reason?" · "+warn.reason:""}${warn.since?" · "+warn.since:""}`:"";
   // Row actions mirror the daily mechanism: Global reports, CN checks in. The
   // per-row Refresh is gone — refreshing is a bulk action (select rows, then
   // Refresh in the selection bar), so the row keeps only what changes the
@@ -1532,7 +1536,7 @@ function rowHTML(a){
     <td class="cap"><span class="dot ${dotCls}"></span><span class="badge conc" data-conc="${esc(a.concurrency_key||a.auth_index)}">${cc.cur}/${a.concurrency_limit==null?"—":esc(String(a.concurrency_limit))}</span></td>
     <td><div class="cred-top"><b>${cr.known?cr.remain:"?"}</b>${cr.known?" / "+cr.size:""}</div>${cr.known?`<div class="mini"><i class="${barCls}" style="width:${pct}%"></i></div>`:""}</td>
     <td class="daily" title="${esc(dy.title||dy.sub||"")}"><div><span class="${dy.pill}">${dy.label}</span></div><div class="dsub">${esc(dy.sub||"")}</div></td>
-    <td><span class="badge ${st.cls}">${st.label}</span></td>
+    <td>${warn?`<span class="badge warn" title="${esc(warnTitle)}">${tr("可能已封禁")}</span> `:""}<span class="badge ${st.cls}">${st.label}</span></td>
     <td class="today-cell">${t.requests?esc(String(t.requests))+tr(" 次")+" · "+fmtCred(t.credit):"<span style=\"color:var(--mut)\">—</span>"}</td>
     <td class="act"><span class="actgrp">${actionHTML}</span></td>
   </tr>`;
