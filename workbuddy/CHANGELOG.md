@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.8
 
 ### Pro-only models are kept away from free accounts (plan gating)
 
@@ -136,8 +136,6 @@
 - Carry upstream HTTP status through executor error envelopes and send async
   failures through the host stream error field instead of a completion payload.
 
-## 0.9.8 (unreleased)
-
 ### Intl OAuth login completes again — the issuer is chosen by realm (issue #5)
 
 - **Login no longer hardcodes the CN issuer.** `handleStartLogin` issued the state on
@@ -167,6 +165,19 @@
   must hit the issuer of the state (token + account) for either realm, and the other realm's
   issuer must stay untouched. Plus the origin-header rule, the Intl fallback, the
   `config.yaml` → runtime path (env fallback, junk value) and the management route.
+
+### Thanks
+
+- **@shengmingboai** — the blocked-template rewrites (#7): matched the invariant
+  substring instead of a whole sentence and added the feedback line, which ended
+  the 400 / code 11128 failures on real Claude Code system prompts.
+- **@moyunliuyin** — the realm-scoped Intl OAuth issuer (#8): login state, poll,
+  token refresh and the `oauth_region` switch, so a Global account can finish
+  the browser flow again.
+- **@oligeeklaphake** — SSE frame handling and Responses/developer-role
+  preservation (#9), which is what fixed the broken streaming and tool-call
+  chains.
+
 ## 0.9.7
 
 ### Dead code sweep
