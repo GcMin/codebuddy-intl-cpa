@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -244,5 +245,76 @@ func TestHandleUpdateCheckQueryContract(t *testing.T) {
 	resp2 := handleUpdateCheck(pluginapi.ManagementRequest{Query: u2.Query()})
 	if !resp2.Seen {
 		t.Fatalf("seen= not honored: %+v", resp2)
+	}
+}
+
+// serveUpdateEndpoints points updateRegistryURL at an httptest server that
+// answers /registry.json with reg and /release-notes.md with the given status,
+// body and content type. Restores the URL after the test.
+func serveUpdateEndpoints(t *testing.T, reg []byte, notesStatus int, notesBody []byte, notesCT string) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/registry.json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(reg)
+	})
+	mux.HandleFunc("/release-notes.md", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", notesCT)
+		w.WriteHeader(notesStatus)
+		_, _ = w.Write(notesBody)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	oldURL := updateRegistryURL
+	updateRegistryURL = srv.URL + "/registry.json"
+	t.Cleanup(func() { updateRegistryURL = oldURL })
+}
+
+func TestUpdateCheck_ReleaseNotesPreferredOverDescription(t *testing.T) {
+	notes := "## 0.9.9\n\n- fix(usage): keep per-account stats on real accounts"
+	serveUpdateEndpoints(t, registryJSON("0.9.9"), http.StatusOK, []byte(notes), "text/markdown; charset=utf-8")
+	resp := freshChecker(t).check(true, "0.9.8")
+	if resp.Changelog != notes {
+		t.Errorf("changelog: got %q, want the release-notes asset", resp.Changelog)
+	}
+	if !resp.Available {
+		t.Errorf("expected available for 0.9.8 -> new release %q", resp.Latest)
+	}
+}
+
+func TestUpdateCheck_ReleaseNotesFallbackOn404(t *testing.T) {
+	// The v0.9.8 window: newer release without a notes asset must keep the
+	// registry description as changelog.
+	serveUpdateEndpoints(t, registryJSON("0.9.9"), http.StatusNotFound, []byte("404 page"), "text/html; charset=utf-8")
+	resp := freshChecker(t).check(true, "0.9.8")
+	if resp.Changelog != "rel 0.9.9" {
+		t.Errorf("changelog fallback: got %q, want registry description", resp.Changelog)
+	}
+}
+
+func TestUpdateCheck_ReleaseNotesFallbackOnNonTextBody(t *testing.T) {
+	// A JSON placeholder (registry-only servers answer every path with JSON)
+	// must not leak into the popover as changelog.
+	serveUpdateEndpoints(t, registryJSON("0.9.9"), http.StatusOK, []byte(`{"oeps":"json"}`), "application/json")
+	resp := freshChecker(t).check(true, "0.9.8")
+	if resp.Changelog != "rel 0.9.9" {
+		t.Errorf("changelog fallback: got %q, want registry description", resp.Changelog)
+	}
+}
+
+func TestUpdateCheck_ReleaseNotesFallbackOnEmptyBody(t *testing.T) {
+	serveUpdateEndpoints(t, registryJSON("0.9.9"), http.StatusOK, []byte(""), "text/markdown; charset=utf-8")
+	resp := freshChecker(t).check(true, "0.9.8")
+	if resp.Changelog != "rel 0.9.9" {
+		t.Errorf("changelog fallback: got %q, want registry description", resp.Changelog)
+	}
+}
+
+func TestUpdateCheck_ReleaseNotesTruncatedToLimit(t *testing.T) {
+	big := strings.Repeat("# ch\n\n", 20000) // ~120 KB, well past the cap
+	serveUpdateEndpoints(t, registryJSON("0.9.9"), http.StatusOK, []byte(big), "text/markdown; charset=utf-8")
+	resp := freshChecker(t).check(true, "0.9.8")
+	if len(resp.Changelog) != updateNotesBytesLimit {
+		t.Errorf("changelog truncated to %d bytes, want %d", len(resp.Changelog), updateNotesBytesLimit)
 	}
 }

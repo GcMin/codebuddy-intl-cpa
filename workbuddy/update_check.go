@@ -42,7 +42,18 @@ const (
 	updateCacheTTL         = 6 * time.Hour
 	updateFetchTimeout     = 10 * time.Second
 	updateFallbackFileName = "workbuddy-update.json" // legacy migration only
+
+	// updateNotesBytesLimit caps the release-notes markdown we buffer (the
+	// CI-extracted CHANGELOG section is ~12 KB today; 64 KB is generous head
+	// room while keeping a hostile asset from bloating the panel payload).
+	updateNotesBytesLimit = 64 << 10
 )
+
+// updateNotesClient deliberately does NOT reuse the shared HTTP client: that
+// one is the target of test transport stubs, and the notes fetch must neither
+// be broken nor faked by them (PLAN-0908 backlog #1, lesson from the
+// fetch-version client incident).
+var updateNotesClient = &http.Client{}
 
 // updateRegistry mirrors the subset of registry.json schema v2 we need.
 type updateRegistry struct {
@@ -146,6 +157,13 @@ func (u *updateChecker) check(force bool, current string) updateCheckResponse {
 		CheckedAt: now.UTC().Format(time.RFC3339),
 		Changelog: changelog,
 	}
+	// PLAN-0908 backlog #1: prefer the release-attached CHANGELOG section
+	// (release-notes.md asset) over the registry's static description. The
+	// fetch is part of the same 6h-cached response; any failure keeps the
+	// description (silent-fail contract).
+	if notes := fetchReleaseNotes(); notes != "" {
+		resp.Changelog = notes
+	}
 	_ = tag // available for future "download" deep-link; not in the contract
 	resp.Seen = resp.Latest != "" && resp.Latest == u.persistedSeen()
 	u.cached = &resp
@@ -215,6 +233,54 @@ func fetchUpdateRegistry() (string, string, string, error) {
 		return strings.TrimSpace(p.Version), p.ReleaseTag, p.Description, nil
 	}
 	return "", "", "", errors.New("registry.json: no plugin version found")
+}
+
+// updateNotesURL derives the release-notes asset URL sitting next to the
+// release-attached registry (releases/latest/download/release-notes.md).
+// Deriving from updateRegistryURL means pointing that variable at a test
+// server covers the notes endpoint too.
+func updateNotesURL() string {
+	if strings.HasSuffix(updateRegistryURL, "/registry.json") {
+		return strings.TrimSuffix(updateRegistryURL, "/registry.json") + "/release-notes.md"
+	}
+	return strings.TrimSuffix(updateRegistryURL, "/") + "/release-notes.md"
+}
+
+// fetchReleaseNotes downloads the release-attached release-notes.md asset.
+// It returns "" on any failure so the caller keeps the registry description
+// as the popover changelog (silent-fail contract, PLAN-0908 backlog #1).
+// Non-text responses (a JSON placeholder or an HTML error page) and empty
+// bodies are rejected; oversized bodies are truncated.
+func fetchReleaseNotes() string {
+	ctx, cancel := context.WithTimeout(context.Background(), updateFetchTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, updateNotesURL(), nil)
+	if err != nil {
+		return ""
+	}
+	// Same browser-ish UA as the registry fetch; GitHub release downloads
+	// are not gated.
+	req.Header.Set("User-Agent", "Mozilla/5.0 (WorkBuddy update check)")
+	req.Header.Set("Accept", "text/markdown, text/plain, */*")
+	resp, err := updateNotesClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "text/") && !strings.HasPrefix(ct, "application/octet-stream") {
+		return ""
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, updateNotesBytesLimit+1))
+	if err != nil || len(body) == 0 {
+		return ""
+	}
+	if len(body) > updateNotesBytesLimit {
+		body = body[:updateNotesBytesLimit]
+	}
+	return strings.TrimSpace(string(body))
 }
 
 // -----------------------------------------------------------------------------
