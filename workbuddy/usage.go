@@ -227,7 +227,10 @@ func usageDetailFromCompletion(payload []byte) usage.Detail {
 // sseUsageCollector scans upstream SSE chunks and keeps the last "usage"
 // object seen (CodeBuddy emits it on the terminal chunk).
 type sseUsageCollector struct {
-	last map[string]any
+	last    map[string]any
+	respID  string
+	created int64
+	model   string
 }
 
 func (c *sseUsageCollector) feed(rawJSON string) {
@@ -237,6 +240,17 @@ func (c *sseUsageCollector) feed(rawJSON string) {
 	}
 	if u, ok := chunk["usage"].(map[string]any); ok && len(u) > 0 {
 		c.last = u
+		// Keep the identity fields of the usage-bearing chunk so a synthetic
+		// OpenAI-spec usage terminator frame can reference the same completion.
+		if id, ok := chunk["id"].(string); ok {
+			c.respID = id
+		}
+		if cr, ok := chunk["created"].(float64); ok {
+			c.created = int64(cr)
+		}
+		if m, ok := chunk["model"].(string); ok {
+			c.model = m
+		}
 	}
 }
 

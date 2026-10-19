@@ -209,7 +209,51 @@ func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, request
 		// a second account for the same request.
 		return emitted, 0, errEmptyStream
 	}
+	// Strict OpenAI clients parse the dedicated usage terminator frame
+	// ("choices":[] + "usage") to record token usage; the upstream only
+	// piggybacks usage on its final content chunk, so strictly-conforming
+	// callers count zero tokens (GH#13). Native-OpenAI entry paths only — the
+	// cross-format translators already map usage through their own protocol
+	// events.
+	if !sseFramed {
+		if term := usageTerminatorChunk(collector, requestedModel, upstreamModel); len(term) > 0 {
+			if err := streamEmitSource(streamID, term); err != nil {
+				return emitted, 0, fmt.Errorf("stream_emit: %w", err)
+			}
+		}
+	}
 	return emitted, 0, nil
+}
+
+// usageTerminatorChunk builds the OpenAI-spec usage terminator frame
+// ("choices":[] + "usage"): the upstream piggybacks usage on its final
+// content chunk, which spec-strict clients never credit for tokens (GH#13),
+// so the stream ends with an explicit usage frame. WB_STREAM_USAGE_TERMINATOR
+// =off disables the extra frame as a field rollback without a rebuild.
+func usageTerminatorChunk(collector *sseUsageCollector, requestedModel, upstreamModel string) []byte {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("WB_STREAM_USAGE_TERMINATOR")), "off") {
+		return nil
+	}
+	u := collector.last
+	if len(u) == 0 {
+		return nil
+	}
+	frame := map[string]any{
+		"id":      firstNonEmpty(collector.respID, "chatcmpl-workbuddy"),
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   firstNonEmpty(collector.model, upstreamModel, requestedModel),
+		"choices": []any{},
+		"usage":   u,
+	}
+	if collector.created != 0 {
+		frame["created"] = collector.created
+	}
+	out, err := json.Marshal(frame)
+	if err != nil {
+		return nil
+	}
+	return out
 }
 
 // clientNeedsSSEFrame reports whether chunk payloads must carry their own
@@ -293,6 +337,16 @@ func cleanChunkJSON(s string) string {
 			for _, noise := range []string{"extra_fields", "refusal", "reasoning_content"} {
 				if v, present := delta[noise]; present && isEmptyValue(v) {
 					delete(delta, noise)
+					changed = true
+				}
+			}
+			// Normalize the upstream's empty-string finish_reason to null: "" is
+			// not a valid OpenAI value and spec-strict clients reject the frame
+			// outright ("Unsupported model finish_reason:" — the first-frame
+			// stream break in GH#13). Real values (stop/length/tools) untouched.
+			if fr, present := choice["finish_reason"]; present {
+				if str, isStr := fr.(string); isStr && str == "" {
+					choice["finish_reason"] = nil
 					changed = true
 				}
 			}
