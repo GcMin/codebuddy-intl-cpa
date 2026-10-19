@@ -34,6 +34,7 @@ type requestUsageRecord struct {
 	Timestamp        string             `json:"timestamp"`
 	AuthIndex        string             `json:"auth_index"`
 	AuthID           string             `json:"auth_id,omitempty"`
+	AuthUID          string             `json:"auth_uid,omitempty"` // account UID; stable across auth file re-import (CB-055)
 	Nickname         string             `json:"nickname,omitempty"`
 	Region           string             `json:"region,omitempty"` // global | cn
 	Model            string             `json:"model"`            // upstream model
@@ -149,10 +150,7 @@ func (s *requestUsageStore) bucketAdd(rec requestUsageRecord) {
 		return
 	}
 	key := ts.Local().Format("2006-01-02")
-	auth := rec.AuthIndex
-	if auth == "" {
-		auth = rec.AuthID
-	}
+	auth := usageBucketKey(rec)
 	if auth == "" {
 		auth = "_unknown"
 	}
@@ -541,30 +539,52 @@ type usageAuthMeta struct {
 	Region    string
 }
 
+// Indirections over the host auth store so tests can stub snapshots without
+// the cgo bridge.
+var (
+	usageAuthListFn = hostAuthList
+	usageAuthGetFn  = hostAuthGet
+)
+
+const (
+	// usageMetaTTL keeps resolved identity warm for the record hook.
+	usageMetaTTL = 60 * time.Second
+	// usageMetaRetryAfter shortens the cache window after a failed or empty
+	// snapshot — right after a CPA restart the plugin can record usage before
+	// the host auth store answers. Pinning an empty snapshot for the full TTL
+	// was what wrote usage into unresolvable raw-ID buckets (CB-055).
+	usageMetaRetryAfter = 5 * time.Second
+)
+
 // usageMetaResolver caches auth_index/nickname/region per auth ID so the
-// record hook doesn't call host RPCs on every chat request (refresh ≤60s).
+// record hook doesn't call host RPCs on every chat request. Last refresh is
+// kept short when the snapshot came back empty (host not ready) so identity
+// resolution retries quickly instead of quarantining writers for a minute.
 type usageMetaResolver struct {
 	mu        sync.Mutex
 	byAuthID  map[string]usageAuthMeta
 	byUID     map[string]usageAuthMeta
 	byIndex   map[string]usageAuthMeta
 	refreshed time.Time
+	lastErr   bool
 }
 
-var usageMetaCache usageMetaResolver
+var usageMetaCache = &usageMetaResolver{}
 
 func (r *usageMetaResolver) refresh() {
 	now := time.Now()
-	if r.byAuthID != nil && now.Sub(r.refreshed) < 60*time.Second {
+	if r.byAuthID != nil && now.Sub(r.refreshed) < r.retryAfter() {
 		return
 	}
 	byAuthID := map[string]usageAuthMeta{}
 	byUID := map[string]usageAuthMeta{}
 	byIndex := map[string]usageAuthMeta{}
-	if files, err := hostAuthList(); err == nil {
+	files, err := usageAuthListFn()
+	r.lastErr = err != nil
+	if err == nil {
 		for _, f := range files {
 			meta := usageAuthMeta{AuthIndex: f.AuthIndex}
-			if sa, err := hostAuthGet(f.AuthIndex); err == nil {
+			if sa, err := usageAuthGetFn(f.AuthIndex); err == nil {
 				meta.Nickname = sa.Account.Nickname
 				meta.Region = accountRegion(sa)
 				byUID[sa.Account.UID] = meta
@@ -579,6 +599,14 @@ func (r *usageMetaResolver) refresh() {
 	}
 	r.byAuthID, r.byUID, r.byIndex = byAuthID, byUID, byIndex
 	r.refreshed = now
+}
+
+// retryAfter decides how long the current snapshot stays trusted.
+func (r *usageMetaResolver) retryAfter() time.Duration {
+	if r.lastErr || (len(r.byAuthID) == 0 && len(r.byUID) == 0 && len(r.byIndex) == 0) {
+		return usageMetaRetryAfter
+	}
+	return usageMetaTTL
 }
 
 // resolve maps authID/authUID to display metadata (cached).
@@ -600,6 +628,44 @@ func (r *usageMetaResolver) resolve(authID, authUID string) usageAuthMeta {
 		}
 	}
 	return usageAuthMeta{}
+}
+
+// stableIndex maps whatever identity a record carries onto the auth_index of
+// the CURRENT auth store entry holding the same credential (matched by auth
+// file record ID, by account UID, or by the index itself). It reports false
+// when nothing matches; callers then keep the record's original key so
+// historical rows never change meaning.
+func (r *usageMetaResolver) stableIndex(authID, authUID, hintIndex string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.refresh()
+	if authID != "" {
+		if m, ok := r.byAuthID[authID]; ok && m.AuthIndex != "" {
+			return m.AuthIndex, true
+		}
+	}
+	if authUID != "" {
+		if m, ok := r.byUID[authUID]; ok && m.AuthIndex != "" {
+			return m.AuthIndex, true
+		}
+	}
+	if hintIndex != "" {
+		if m, ok := r.byIndex[hintIndex]; ok && m.AuthIndex != "" {
+			return m.AuthIndex, true
+		}
+	}
+	return "", false
+}
+
+// usageBucketKey picks the account bucket for one usage record. When the
+// credential is known to the current auth store, the record lands on that
+// account's current auth_index — repairing records written while the auth
+// snapshot was unavailable or under an older key scheme (CB-055).
+func usageBucketKey(rec requestUsageRecord) string {
+	if stable, ok := usageMetaCache.stableIndex(rec.AuthID, rec.AuthUID, rec.AuthIndex); ok {
+		return stable
+	}
+	return firstNonEmpty(rec.AuthIndex, rec.AuthID, rec.AuthUID)
 }
 
 // buildUsageRecord assembles one record from executor call-site data.
@@ -632,6 +698,7 @@ func buildUsageRecord(requestedModel, upstreamModel, authID, authUID string, sta
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
 		AuthIndex:        firstNonEmpty(meta.AuthIndex, authUID, authID),
 		AuthID:           authID,
+		AuthUID:          authUID,
 		Nickname:         meta.Nickname,
 		Region:           region,
 		Model:            model,
@@ -695,6 +762,14 @@ func handleUsageQuery(req pluginapi.ManagementRequest) map[string]any {
 	}
 	usageStore.loadFromDisk()
 	records := usageStore.queryRecords(authIndex, from, to, limit)
+	// Display-only backfill: records written during an auth-snapshot miss have
+	// no nickname; once the account is known again, show its name (CB-055).
+	for i := range records {
+		if records[i].Nickname == "" {
+			m := usageMetaCache.resolve(records[i].AuthID, firstNonEmpty(records[i].AuthUID, records[i].AuthIndex))
+			records[i].Nickname = m.Nickname
+		}
+	}
 	if records == nil {
 		records = []requestUsageRecord{}
 	}
@@ -717,8 +792,35 @@ func handleUsageQuery(req pluginapi.ManagementRequest) map[string]any {
 }
 
 // handleUsageSummary implements GET /usage/summary — per-account quick stats.
+// rekeyResolved merges already-loaded day buckets whose key now resolves to a
+// current account into that account's bucket. Called before summary reads, so
+// phantom buckets (records written during an auth-snapshot miss, or by an
+// older build's key scheme) roll up into the real account without rewriting
+// the persisted JSONL (CB-055).
+func (s *requestUsageStore) rekeyResolved() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range s.perDay {
+		for key, agg := range m {
+			stable, ok := usageMetaCache.stableIndex(key, "", key)
+			if !ok || stable == "" || stable == key {
+				continue
+			}
+			dst := m[stable]
+			if dst == nil {
+				dst = &dayAgg{}
+				m[stable] = dst
+			}
+			dst.CreditMilli += agg.CreditMilli
+			dst.Requests += agg.Requests
+			delete(m, key)
+		}
+	}
+}
+
 func handleUsageSummary(req pluginapi.ManagementRequest) map[string]any {
 	usageStore.loadFromDisk()
+	usageStore.rekeyResolved()
 	today := time.Now().Format("2006-01-02")
 	type row struct {
 		Nickname      string
