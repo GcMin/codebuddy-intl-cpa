@@ -318,6 +318,17 @@ func cleanChunkJSON(s string) string {
 			if !ok {
 				continue
 			}
+			// Normalize the upstream's empty-string finish_reason to null: "" is
+			// not a valid OpenAI value and spec-strict clients reject the frame
+			// outright ("Unsupported model finish_reason:" - the first-frame
+			// stream break in GH#13). Real values untouched; placed before the
+			// delta extraction so delta-less choices are covered too.
+			if fr, present := choice["finish_reason"]; present {
+				if str, isStr := fr.(string); isStr && str == "" {
+					choice["finish_reason"] = nil
+					changed = true
+				}
+			}
 			delta, ok := choice["delta"].(map[string]any)
 			if !ok {
 				continue
@@ -337,16 +348,6 @@ func cleanChunkJSON(s string) string {
 			for _, noise := range []string{"extra_fields", "refusal", "reasoning_content"} {
 				if v, present := delta[noise]; present && isEmptyValue(v) {
 					delete(delta, noise)
-					changed = true
-				}
-			}
-			// Normalize the upstream's empty-string finish_reason to null: "" is
-			// not a valid OpenAI value and spec-strict clients reject the frame
-			// outright ("Unsupported model finish_reason:" — the first-frame
-			// stream break in GH#13). Real values (stop/length/tools) untouched.
-			if fr, present := choice["finish_reason"]; present {
-				if str, isStr := fr.(string); isStr && str == "" {
-					choice["finish_reason"] = nil
 					changed = true
 				}
 			}

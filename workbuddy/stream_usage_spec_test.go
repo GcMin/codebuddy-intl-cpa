@@ -40,6 +40,24 @@ func TestCleanChunkJSON_NormalizesEmptyFinishReason(t *testing.T) {
 	if out := cleanChunkJSON(shell); out != "" {
 		t.Fatalf("noop shell should be dropped, got %s", out)
 	}
+
+	// Choices WITHOUT a delta map are covered too: normalization runs before
+	// the delta extraction (GH#13 follow-up — reporter-suggested placement).
+	noDelta := `{"choices":[{"index":0,"finish_reason":""}],"id":"c2","model":"m"}`
+	out2 := cleanChunkJSON(noDelta)
+	var obj2 map[string]any
+	if err := json.Unmarshal([]byte(out2), &obj2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	ch2 := obj2["choices"].([]any)[0].(map[string]any)
+	if ch2["finish_reason"] != nil {
+		t.Fatalf("no-delta finish_reason = %v, want null", ch2["finish_reason"])
+	}
+	deltaNull := `{"choices":[{"delta":null,"finish_reason":"","index":0}]}`
+	out3 := cleanChunkJSON(deltaNull)
+	if !strings.Contains(out3, `"finish_reason":null`) {
+		t.Fatalf("null-delta finish_reason not normalized: %s", out3)
+	}
 }
 
 func TestUsageTerminatorChunk(t *testing.T) {
