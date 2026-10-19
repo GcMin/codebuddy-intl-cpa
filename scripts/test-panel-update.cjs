@@ -5,7 +5,21 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const html = fs.readFileSync(path.join(__dirname, '../workbuddy/panel.html'), 'utf8');
-const code = html.slice(html.indexOf('function mmCmpVer('), html.indexOf('// Skip version:'));
+// The update-widget code is executed verbatim; mdLite (render) and
+// htmlUnescape (host-sanitizer entity decode) live elsewhere in panel.html,
+// so extract them by name into the sandbox alongside the sliced section.
+function extractFn(name) {
+  const i = html.indexOf('function ' + name + '(');
+  if (i < 0) throw new Error('function ' + name + ' not found in panel.html');
+  let depth = 0;
+  const j = html.indexOf('{', i);
+  for (let k = j; k < html.length; k++) {
+    if (html[k] === '{') depth++;
+    else if (html[k] === '}') { depth--; if (!depth) return html.slice(i, k + 1); }
+  }
+  throw new Error('unbalanced braces for function ' + name);
+}
+const code = [extractFn('htmlUnescape'), extractFn('mdLite'), html.slice(html.indexOf('function mmCmpVer('), html.indexOf('// Skip version:'))].join('\n');
 function panel() {
   const els = new Map();
   const calls = [];
