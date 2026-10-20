@@ -119,8 +119,41 @@ func normalizeToolsInPlace(obj map[string]any) bool {
 
 // rewriteSystemInPlace is the in-place form of rewriteSystemForUpstream.
 func rewriteSystemInPlace(obj map[string]any) bool {
-	messages, _ := obj["messages"].([]any)
 	changed := false
+
+	// Top-level system field (Anthropic Messages API: string or []content_block).
+	if sys, ok := obj["system"]; ok {
+		if newSys, mod := sanitizeTextOrParts(sys); mod {
+			obj["system"] = newSys
+			changed = true
+		}
+	}
+
+	// Top-level instructions field (Responses API).
+	if inst, ok := obj["instructions"].(string); ok {
+		if r := sanitizeBlockedTemplates(inst); r != inst {
+			obj["instructions"] = r
+			changed = true
+		}
+	}
+
+	// Top-level system_instruction (Gemini API shape: {"parts":[{"text":"..."}]}).
+	if si, ok := obj["system_instruction"].(map[string]any); ok {
+		if parts, ok := si["parts"].([]any); ok {
+			for _, p := range parts {
+				if part, ok := p.(map[string]any); ok {
+					if t, ok := part["text"].(string); ok {
+						if r := sanitizeBlockedTemplates(t); r != t {
+							part["text"] = r
+							changed = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	messages, _ := obj["messages"].([]any)
 	for _, m := range messages {
 		msg, ok := m.(map[string]any)
 		if !ok {
@@ -324,21 +357,7 @@ func rewriteSystemForUpstream(payload []byte) []byte {
 	if json.Unmarshal(payload, &obj) != nil {
 		return payload
 	}
-	messages, _ := obj["messages"].([]any)
-	changed := false
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		if rewriteContentField(msg) {
-			changed = true
-		}
-	}
-	if forceMaxThinking(obj) {
-		changed = true
-	}
-	if !changed {
+	if !rewriteSystemInPlace(obj) {
 		return payload
 	}
 	out, err := json.Marshal(obj)
@@ -349,14 +368,57 @@ func rewriteSystemForUpstream(payload []byte) []byte {
 }
 
 // rewriteContentField sanitizes blocked templates in one message's content,
-// handling both plain-string and OpenAI multimodal (array of parts) shapes.
-// Returns true if the message was modified.
+// reasoning, and tool calls.
 func rewriteContentField(msg map[string]any) bool {
-	switch c := msg["content"].(type) {
+	changed := false
+	if c, ok := msg["content"]; ok {
+		if newC, mod := sanitizeTextOrParts(c); mod {
+			msg["content"] = newC
+			changed = true
+		}
+	}
+	if rc, ok := msg["reasoning_content"].(string); ok {
+		if r := sanitizeBlockedTemplates(rc); r != rc {
+			msg["reasoning_content"] = r
+			changed = true
+		}
+	}
+	if r, ok := msg["reasoning"].(string); ok {
+		if s := sanitizeBlockedTemplates(r); s != r {
+			msg["reasoning"] = s
+			changed = true
+		}
+	}
+	if tc, ok := msg["tool_calls"].([]any); ok {
+		for _, c := range tc {
+			call, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			fn, ok := call["function"].(map[string]any)
+			if !ok {
+				continue
+			}
+			args, ok := fn["arguments"].(string)
+			if !ok {
+				continue
+			}
+			if s := sanitizeBlockedTemplates(args); s != args {
+				fn["arguments"] = s
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// sanitizeTextOrParts sanitizes blocked templates in either a plain string or
+// an array of content parts (e.g. Anthropic multimodal blocks [{"type":"text","text":"..."}]).
+func sanitizeTextOrParts(v any) (any, bool) {
+	switch c := v.(type) {
 	case string:
 		if r := sanitizeBlockedTemplates(c); r != c {
-			msg["content"] = r
-			return true
+			return r, true
 		}
 	case []any:
 		modified := false
@@ -372,9 +434,9 @@ func rewriteContentField(msg map[string]any) bool {
 				}
 			}
 		}
-		return modified
+		return c, modified
 	}
-	return false
+	return v, false
 }
 
 func sanitizeBlockedTemplates(s string) string {
@@ -396,6 +458,9 @@ func sanitizeBlockedTemplates(s string) string {
 	s = strings.ReplaceAll(s,
 		"To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues",
 		"To give feedback, users should report the issue in the project's issue tracker")
+	s = strings.ReplaceAll(s,
+		"You are a coding agent running in the Codex CLI, a terminal-based coding assistant.",
+		"You are a coding agent running in the Codex CLI tool, a terminal-based coding assistant.")
 	return s
 }
 
