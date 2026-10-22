@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.10 (unreleased)
+## 0.10.0 (unreleased)
 
 ### Global traffic can move to the other Intl host when `codebuddy.ai` is blocked (issue #14)
 
