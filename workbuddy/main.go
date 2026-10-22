@@ -68,6 +68,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -85,12 +87,11 @@ const (
 	// CN chat/auth gateway (iss = codebuddy.cn realm).
 	upstreamBaseCN = "https://copilot.tencent.com"
 	// Global chat/auth gateway (iss = workbuddy.ai realm). APISIX on
-	// copilot.tencent.com rejects Global JWTs with 401; use the verified
-	// codebuddy.ai gateway for both Global issuer variants.
-	upstreamBaseGlobal  = "https://www.codebuddy.ai"
-	clientUA            = "CLI/2.63.2 CodeBuddy/2.63.2"
-	originReferer       = "https://www.codebuddy.cn"
-	originRefererGlobal = "https://www.codebuddy.ai"
+	// copilot.tencent.com rejects Global JWTs with 401, so Global traffic uses
+	// the .ai/.workbuddy hosts; see resolveGlobalBase for the operator override.
+	defaultUpstreamBaseGlobal = "https://www.codebuddy.ai"
+	clientUA                  = "CLI/2.63.2 CodeBuddy/2.63.2"
+	originReferer             = "https://www.codebuddy.cn"
 
 	// Login OAuth endpoints. The login state must be issued by the realm that
 	// owns the account, so there is no single fixed login URL: these paths are
@@ -114,6 +115,32 @@ const (
 
 	loginTTL = 5 * time.Minute
 )
+
+// Global base is a var rather than a const: in some regions www.codebuddy.ai
+// resolves to 0.0.0.1 (GH #14), which breaks login, chat, model discovery and
+// billing at once. WB_UPSTREAM_GLOBAL moves the whole Global surface to the
+// realm's other host without touching the credential: both hosts serve the
+// same account realm and accept the same bearer token.
+var (
+	upstreamBaseGlobal  = resolveGlobalBase()
+	originRefererGlobal = upstreamBaseGlobal
+)
+
+// resolveGlobalBase returns the Intl gateway base, honouring
+// WB_UPSTREAM_GLOBAL when it is an http(s) URL. Invalid values are ignored with
+// a warning so a typo cannot silently break every Global request.
+func resolveGlobalBase() string {
+	raw := strings.TrimSpace(os.Getenv("WB_UPSTREAM_GLOBAL"))
+	if raw == "" {
+		return defaultUpstreamBaseGlobal
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+		fmt.Fprintf(os.Stderr, "[workbuddy] WB_UPSTREAM_GLOBAL ignored (want http(s)://host): %q\n", raw)
+		return defaultUpstreamBaseGlobal
+	}
+	return strings.TrimRight(raw, "/")
+}
 
 // loginCtx holds the cookie-affined HTTP client for one in-flight login flow.
 // CodeBuddy associates the browser login with the state issued at auth/state,

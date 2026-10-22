@@ -352,6 +352,7 @@ Platform layout also works: `plugins/linux/amd64/workbuddy.so`.
 | `WB_CACHE_TRACE` | `1`/`true`/`yes`/`on` records content-free request fingerprints for prompt-cache investigations. **Off by default** — the Usage card's **Hash tracing** toggle overrides this and persists across restarts. See [cache tracing](workbuddy/docs/cache-tracing.md). |
 | `WB_MANAGEMENT_KEY` | Fallback management key when the config does not set one. |
 | `WB_SELF_URL` | Base URL the plugin uses to trigger a host model-registry reload after Save. |
+| `WB_UPSTREAM_GLOBAL` | Override the Intl gateway base (default `https://www.codebuddy.ai`). Set it to `https://www.workbuddy.ai` when `www.codebuddy.ai` is DNS-blackholed in your region: both hosts serve the same account realm and accept the same Global credential, so no re-login is needed. Covers chat, OAuth state/poll, token refresh, model discovery and billing. |
 | `USAGE_REPORT_URL`, `USAGE_REPORT_KEY` | Optional CPAMP usage import target and key. |
 
 ### Known limitation: Intel Macs

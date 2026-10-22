@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.10 (unreleased)
+
+### Global traffic can move to the other Intl host when `codebuddy.ai` is blocked (issue #14)
+
+- In some regions `www.codebuddy.ai` resolves to `0.0.0.1`. Login, chat, model
+  discovery, token refresh and billing all target that base, so Global accounts
+  stop working entirely rather than only failing the OAuth start.
+- `WB_UPSTREAM_GLOBAL` now overrides the Intl base; the default is unchanged.
+  Point it at `https://www.workbuddy.ai`: both hosts serve the same account
+  realm and accept the same bearer token, so the existing credential keeps
+  working and no re-login is needed (verified against the live gateway:
+  billing and chat answered 200 on both hosts with the same Global token).
+- The override covers the chat base, OAuth state/poll, token refresh, model
+  discovery and the billing/check-in base. A value that is not an `http(s)://`
+  URL is ignored with a warning, so a typo cannot silently break Global.
+
 ## 0.9.9
 
 ### Blocked templates are rewritten outside `messages` too (issue #15)
