@@ -569,6 +569,10 @@ func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemp
 		// nothing for the rejected attempt.
 		if errors.Is(err, errUpstreamFinishError) && finishErrorRetries < 1 {
 			finishErrorRetries++
+			// Remember the rejection: with no further candidate the loop ends
+			// here, and an unset res would be reported as 429 "all accounts
+			// unavailable" instead of the real finish error.
+			res.AuthID, res.Status, res.Body, res.Err = cand.AuthID, status, body, err
 			continue
 		}
 		switch outcome {
@@ -664,6 +668,9 @@ func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, 
 		// Retry once while nothing client-visible has been emitted.
 		if errors.Is(err, errUpstreamFinishError) && !emitted && finishErrorRetries < 1 {
 			finishErrorRetries++
+			// With no further candidate the loop ends here; keep the rejection
+			// so it is not reported as 429 "all accounts unavailable".
+			res.AuthID, res.Status, res.Body, res.Err = cand.AuthID, status, err.Error(), err
 			continue
 		}
 		// Chunks already reached the client — the stream must end here.

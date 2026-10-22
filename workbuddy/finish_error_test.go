@@ -256,3 +256,36 @@ func TestIsUpstreamFinishError(t *testing.T) {
 		t.Fatal("unrelated errors must not match")
 	}
 }
+
+// A single-account pool has no second candidate to retry on. The loop must
+// surface the rejection it saw, not rewrite it into 429 "all accounts
+// unavailable" (unavailableFailoverResult does that when res.Err is unset).
+func TestRunStreamFailover_SingleCandidateKeepsFinishError(t *testing.T) {
+	resetAuthCooldown("idx-1")
+	t.Cleanup(func() { resetAuthCooldown("idx-1") })
+
+	fin := runStreamFailover([]*failoverCandidate{{AuthID: "idx-1", Auth: &storedAuth{}}},
+		func(*failoverCandidate) (bool, int, error) { return false, 0, errUpstreamFinishError })
+	if fin.Outcome != outcomeStop || !isUpstreamFinishError(fin.Err) {
+		t.Fatalf("fin = %+v, want outcomeStop with the finish error", fin)
+	}
+	if fin.Status == http.StatusTooManyRequests {
+		t.Fatal("finish error was rewritten into a 429")
+	}
+}
+
+func TestRunFailover_SingleCandidateKeepsFinishError(t *testing.T) {
+	resetAuthCooldown("idx-1")
+	t.Cleanup(func() { resetAuthCooldown("idx-1") })
+
+	fin := runFailover([]*failoverCandidate{{AuthID: "idx-1", Auth: &storedAuth{}}},
+		func(*failoverCandidate) (attemptOutcome, int, string, error) {
+			return classifyNonStream(nil, errUpstreamFinishError)
+		})
+	if fin.Outcome != outcomeStop || !isUpstreamFinishError(fin.Err) {
+		t.Fatalf("fin = %+v, want outcomeStop with the finish error", fin)
+	}
+	if fin.Status == http.StatusTooManyRequests {
+		t.Fatal("finish error was rewritten into a 429")
+	}
+}
