@@ -413,7 +413,7 @@ type registrationCapability struct {
 // normal release keeps the production defaults; -ldflags -X can label a test
 // binary without changing the provider/auth identifier (workbuddy).
 var (
-	version           = "0.9.7"
+	version           = "0.9.9"
 	pluginRouteID     = providerName
 	pluginDisplayName = "CodeBuddy Intl CPA"
 	pluginMenuName    = "CodeBuddy"

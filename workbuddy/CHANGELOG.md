@@ -1,5 +1,83 @@
 # Changelog
 
+## 0.9.9
+
+### Blocked templates are rewritten outside `messages` too (issue #15)
+
+- Claude Desktop and other clients carry the system prompt in a top-level
+  `system` field (a string or a content-block array), the Responses API uses
+  `instructions`, and Gemini uses `system_instruction`. The rewriter only walked
+  `messages[]`, so an identity line in any of those fields reached the upstream
+  verbatim and drew `400 · 11128 "Illegal API invocation from an unapproved
+  channel"` — the request-side rejection that also parks the provider for about
+  a minute.
+- All four shapes are now rewritten in place. The same pass also covers
+  `reasoning` / `reasoning_content` and `tool_calls[].function.arguments`, and
+  one more blocked line is handled: the Codex CLI identity sentence.
+- Only the listed sentences are rewritten; the rest of the prompt is forwarded
+  unchanged.
+
+### The DeepSeek Harness intro is rewritten (issue #18)
+
+- `You are an AI agent powered by DeepSeek Harness` is the third member of the
+  same verbatim family as the Claude Code and Codex prompts; the CN realm
+  answers it with 400 / 11128 every time.
+- The rewrite is case-insensitive but exact-match: near-misses (`DeepSeek
+  Harness` alone, `powered by DeepSeek Harness`, the same sentence naming
+  another harness) are left untouched because the upstream accepts them.
+
+### An upstream `finish_reason:"error"` is a failure, and it is retried once (CB-053)
+
+- The upstream occasionally answers 200 and then terminates the stream with
+  `finish_reason:"error"`, no content and no usage — a probabilistic rejection
+  that follows the conversation prefix, not the account (the same conversation
+  failed on two accounts, and every identical retry succeeded).
+- The relay forwarded that terminal as a normal stop, so strict clients
+  surfaced `Provider finish_reason: error` while the request was recorded as a
+  zero-usage success: no failover, no cooldown, wrong stats.
+- The role-only opener is now held until the first content-bearing chunk. When
+  the rejection arrives before that point, nothing has reached the client and
+  the request is retried once on the next account, without quarantining the one
+  that rejected it. When content was already delivered, the attempt is recorded
+  as failed and the client gets a retryable error frame instead of the raw stop
+  reason.
+- The folded (non-stream) path no longer turns the error terminal into a
+  completion. Streams that end without any `finish_reason` are logged as
+  possible truncation (behaviour unchanged for now).
+
+### Strict OpenAI clients keep the first frame (issue #13)
+
+- The upstream sends `finish_reason:""` on the first frame of a stream, which is
+  not a valid OpenAI value; a spec-strict client (Qoder) dropped the frame and
+  ended the turn. Empty strings are normalized to `null`.
+- Native OpenAI streams now end with an explicit usage terminator
+  (`{"choices":[],"usage":{…}}`), so clients that only credit a dedicated usage
+  frame stop reporting zero tokens. `WB_STREAM_USAGE_TERMINATOR=off` restores
+  the previous wire shape.
+
+### Usage stays on the account that spent it (issue #11)
+
+- Per-account usage is re-keyed through the auth store, so records no longer
+  pile onto the first-seen account after a restart, and archived accounts get
+  their own bucket instead of a phantom "other" row. `auth_uid` is recorded with
+  each request and the nickname is backfilled on first sight.
+
+### The update popover shows the real release notes
+
+- `release-notes.md` is fetched from the release asset (cap 64 KB, silent
+  failure falls back to the registry description), so the popover shows the
+  CHANGELOG instead of the store blurb. Headings, bullets, bold and inline code
+  render; the note scrolls instead of overflowing.
+- Hosts ≥ 7.2.145 HTML-escape every management response string; the panel
+  unescapes once (`&amp;` last) so the note is not double-escaped.
+
+### Thanks
+
+- **@SunwardGrace** — top-level `system`/`instructions` sanitization and the
+  extra `messages[]` coverage (#16).
+- **@ifsherlock** — the DeepSeek Harness template (#18; the original PR #17 was
+  closed when the contributing fork went private).
+
 ## 0.9.8
 
 ### Pro-only models are kept away from free accounts (plan gating)
