@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -131,6 +132,11 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 			recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 			if fin.Status > 0 {
 				streamEmitError(streamID, fmt.Sprintf("upstream %d: %s", fin.Status, truncateRedacted(fin.Body, 200)))
+			} else if isUpstreamFinishError(fin.Err) {
+				// CB-053: the rejection is transient and the retry already
+				// happened; tell the client to send the request again instead of
+				// surfacing the raw sentinel.
+				streamEmitError(streamID, "upstream ended the stream with an error (finish_reason error); retry the request")
 			} else if fin.Err != nil {
 				streamEmitError(streamID, fmt.Sprintf("upstream stream read error: %v", fin.Err))
 			}
@@ -141,6 +147,10 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 		recordUsageMap(req.Model, upstreamModel, usageAuthID, usageUID, started, collector.lastMap(), true, trace)
 		if fin.Status > 0 && !isRateLimitResponse(fin.Status, fin.Body) && !isAccountExhaustedResponse(fin.Status, fin.Body) {
 			go reconcileByUID(usageUID, fin.Status, fin.Body)
+		}
+		if isUpstreamFinishError(fin.Err) {
+			streamEmitError(streamID, "upstream ended the stream with an error (finish_reason error); retry the request")
+			return
 		}
 		streamEmitError(streamID, failoverErrorMessage(fin.Status, fin.Body, fin.Err))
 	}
@@ -182,24 +192,68 @@ func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, request
 		return false, statusCode, &upstreamStatusError{status: statusCode, body: string(errPayload)}
 	}
 	emitted := false
+	committed := false // a content-bearing chunk already reached the client
+	sawFinish := false
+	var pending []byte // role-only opener held until content or a clean terminal
+
+	emitChunk := func(payload string) error {
+		if sseFramed {
+			payload = "data: " + payload
+		}
+		if err := streamEmitSource(streamID, []byte(payload)); err != nil {
+			// Client disconnected / host closed stream — abort.
+			return fmt.Errorf("stream_emit: %w", err)
+		}
+		emitted = true
+		return nil
+	}
+
 	err = scanCompletionSSE(newHostStreamReader(stream), func(content string) error {
 		collector.feed(content)
 		cleaned := cleanChunkJSON(content)
 		if cleaned == "" {
 			return nil
 		}
-		if sseFramed {
-			cleaned = "data: " + cleaned
+		verdict := inspectStreamChunk(cleaned)
+		if verdict.finish == "error" {
+			// CB-053: the upstream occasionally answers 200 with a stream whose
+			// terminal chunk is finish_reason "error" and no content. Forwarding
+			// it hands strict clients a bogus stop reason and records a
+			// zero-usage success. Fail the attempt instead; the held role-only
+			// opener is discarded so the failover loop may retry cleanly.
+			return errUpstreamFinishError
 		}
-		if err := streamEmitSource(streamID, []byte(cleaned)); err != nil {
-			// Client disconnected / host closed stream — abort.
-			return fmt.Errorf("stream_emit: %w", err)
+		if verdict.roleOnly && !committed {
+			// Hold the role-only opener: replaying a stream that only announced
+			// the role is safe, replaying one that delivered content is not.
+			pending = []byte(cleaned)
+			return nil
 		}
-		emitted = true
-		return nil
+		if pending != nil {
+			if err := emitChunk(string(pending)); err != nil {
+				return err
+			}
+			pending = nil
+		}
+		if verdict.payload {
+			committed = true
+		}
+		if verdict.finish != "" {
+			sawFinish = true
+		}
+		return emitChunk(cleaned)
 	})
 	if err != nil {
+		if errors.Is(err, errUpstreamFinishError) {
+			return emitted, 0, errUpstreamFinishError
+		}
 		return emitted, 0, err
+	}
+	if pending != nil {
+		if err := emitChunk(string(pending)); err != nil {
+			return emitted, 0, err
+		}
+		pending = nil
 	}
 	if !emitted {
 		// The upstream closed without forwarding a single chunk to the client
@@ -208,6 +262,13 @@ func pumpAttempt(httpReq *http.Request, streamID string, sseFramed bool, request
 		// would surface as a retryable empty_stream on the host side and bill
 		// a second account for the same request.
 		return emitted, 0, errEmptyStream
+	}
+	if !sawFinish {
+		// Diagnostic only (CB-053 follow-up): a stream that delivered content
+		// but no terminal finish_reason may be truncated. Keep the current
+		// behaviour until the rate is known.
+		fmt.Fprintf(os.Stderr, "[workbuddy] stream: no finish_reason auth=%s model=%s\n",
+			traceSafeID(authID), redactSecrets(upstreamModel))
 	}
 	// Strict OpenAI clients parse the dedicated usage terminator frame
 	// ("choices":[] + "usage") to record token usage; the upstream only
@@ -291,6 +352,9 @@ func aggregateSSEWithCollector(r io.Reader, sseFramed bool, collector *sseUsageC
 		if cleaned == "" {
 			return nil
 		}
+		if inspectStreamChunk(cleaned).finish == "error" {
+			return errUpstreamFinishError
+		}
 		if sseFramed {
 			cleaned = "data: " + cleaned
 		}
@@ -298,6 +362,59 @@ func aggregateSSEWithCollector(r io.Reader, sseFramed bool, collector *sseUsageC
 		return nil
 	})
 	return chunks, err
+}
+
+// streamChunkVerdict summarises what the async pump needs to know about a
+// cleaned upstream chunk before forwarding it: whether it carries
+// client-visible payload, whether it is the role-only opener, and the terminal
+// finish reason.
+type streamChunkVerdict struct {
+	payload  bool
+	roleOnly bool
+	finish   string
+}
+
+// inspectStreamChunk classifies one cleaned chunk. Unparseable or choice-less
+// frames return the zero verdict and are forwarded as they arrive.
+func inspectStreamChunk(cleaned string) streamChunkVerdict {
+	var obj map[string]any
+	if json.Unmarshal([]byte(cleaned), &obj) != nil {
+		return streamChunkVerdict{}
+	}
+	choices, _ := obj["choices"].([]any)
+	if len(choices) == 0 {
+		return streamChunkVerdict{}
+	}
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		return streamChunkVerdict{}
+	}
+	v := streamChunkVerdict{}
+	if fr, ok := choice["finish_reason"].(string); ok {
+		v.finish = fr
+	}
+	delta, ok := choice["delta"].(map[string]any)
+	if !ok {
+		return v
+	}
+	if s, ok := delta["content"].(string); ok && s != "" {
+		v.payload = true
+	}
+	if s, ok := delta["reasoning_content"].(string); ok && s != "" {
+		v.payload = true
+	}
+	if s, ok := delta["reasoning"].(string); ok && s != "" {
+		v.payload = true
+	}
+	if arr, ok := delta["tool_calls"].([]any); ok && len(arr) > 0 {
+		v.payload = true
+	}
+	if fc, ok := delta["function_call"]; ok && !isEmptyValue(fc) {
+		v.payload = true
+	}
+	_, hasRole := delta["role"]
+	v.roleOnly = hasRole && !v.payload
+	return v
 }
 
 // cleanChunkJSON strips only the known-problematic empty tool-call shells
@@ -460,6 +577,12 @@ func aggregateCompletionCounted(r io.Reader, model string) ([]byte, bool, error)
 	// of assembling a partial completion nobody can safely consume.
 	if scanErr != nil {
 		return nil, sawData, scanErr
+	}
+	if finish == "error" {
+		// CB-053: a folded 200 stream that ends in finish_reason "error" must
+		// not be returned as a completion — the host would render it as a
+		// successful turn with zero usage.
+		return nil, sawData, errUpstreamFinishError
 	}
 
 	message := map[string]any{"role": firstNonEmpty(role, "assistant"), "content": content}

@@ -1043,6 +1043,12 @@ func collectStreamAttempt(body []byte, cand *failoverCandidate, sseFramed bool, 
 	}
 	chunks, errAgg := aggregateSSEWithCollector(reader, sseFramed, collector)
 	if errAgg != nil {
+		if errors.Is(errAgg, errUpstreamFinishError) {
+			// CB-053: nothing has been handed to the host yet on the sync path,
+			// so drop the collected chunks and let the failover loop retry once
+			// instead of returning a half-built stream.
+			return nil, 0, errUpstreamFinishError
+		}
 		return chunks, statusCode, errAgg
 	}
 	if len(chunks) == 0 {

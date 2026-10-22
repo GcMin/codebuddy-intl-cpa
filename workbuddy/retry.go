@@ -473,6 +473,19 @@ func upstreamStatusOf(err error) (int, string) {
 // the failover loop immediately and record failed=true.
 var errEmptyStream = errors.New("empty_stream: upstream stream closed before first payload")
 
+// errUpstreamFinishError marks an upstream that answered 200 but terminated
+// the stream with finish_reason "error" (CB-053). The rejection is probabilistic
+// per conversation — the same CID failed on two different accounts, every
+// identical retry succeeded, and no credit was billed — so it is treated as a
+// request-level transient: fail the attempt, retry once while no content has
+// reached the client, never quarantine the account.
+var errUpstreamFinishError = errors.New("upstream finish_reason: error")
+
+// isUpstreamFinishError reports whether err is the CB-053 marker.
+func isUpstreamFinishError(err error) bool {
+	return errors.Is(err, errUpstreamFinishError)
+}
+
 // isEmptyStreamError reports whether err is the plugin-side empty-stream
 // marker (distinct from the host conductor's retryable empty_stream).
 func isEmptyStreamError(err error) bool {
@@ -515,6 +528,7 @@ func runFailover(cands []*failoverCandidate, attemptFn failoverAttemptFn, contex
 func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemptFn failoverAttemptFn, contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
+	finishErrorRetries := 0
 	tierBlocked, tierBlockedModel := false, ""
 	for _, cand := range chatSessions.preferred(sessionKey, cands) {
 		// A pro-only model on an account already known to be free: skip it
@@ -548,6 +562,15 @@ func runFailoverForSession(cands []*failoverCandidate, sessionKey string, attemp
 			}
 			return outcome, status, body, err
 		}()
+		// CB-053: a 200 stream that ends in finish_reason "error" is a
+		// probabilistic request rejection, not an account failure (the same
+		// conversation fails on several accounts). Retry once on the next
+		// candidate without marking this one unavailable; the upstream billed
+		// nothing for the rejected attempt.
+		if errors.Is(err, errUpstreamFinishError) && finishErrorRetries < 1 {
+			finishErrorRetries++
+			continue
+		}
 		switch outcome {
 		case outcomeSuccess:
 			return failoverResult{Outcome: outcomeSuccess, AuthID: cand.AuthID, Tried: res.Tried}
@@ -600,6 +623,7 @@ func runStreamFailover(cands []*failoverCandidate, attempt func(cand *failoverCa
 func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, attempt func(cand *failoverCandidate) (emitted bool, status int, err error), contexts ...context.Context) failoverResult {
 	res := failoverResult{Outcome: outcomeStop}
 	busy := false
+	finishErrorRetries := 0
 	tierBlocked, tierBlockedModel := false, ""
 	for _, cand := range chatSessions.preferred(sessionKey, cands) {
 		if blocked, model := candidateProOnlyBlocked(cand); blocked {
@@ -634,6 +658,13 @@ func runStreamFailoverForSession(cands []*failoverCandidate, sessionKey string, 
 		}()
 		if err == nil {
 			return failoverResult{Outcome: outcomeSuccess, AuthID: cand.AuthID, Tried: res.Tried}
+		}
+		// CB-053: a finish_reason "error" rejection is probabilistic per
+		// conversation, not account-scoped, and the upstream billed nothing.
+		// Retry once while nothing client-visible has been emitted.
+		if errors.Is(err, errUpstreamFinishError) && !emitted && finishErrorRetries < 1 {
+			finishErrorRetries++
+			continue
 		}
 		// Chunks already reached the client — the stream must end here.
 		if emitted {
