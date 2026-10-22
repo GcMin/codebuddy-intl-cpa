@@ -71,6 +71,130 @@ func TestSanitizeBlockedTemplates_MainBranch(t *testing.T) {
 	}
 }
 
+func TestSanitizeBlockedTemplates_Codex(t *testing.T) {
+	in := "You are a coding agent running in the Codex CLI, a terminal-based coding assistant."
+	out := sanitizeBlockedTemplates(in)
+	if out == in {
+		t.Fatal("should replace codex template")
+	}
+	want := "You are a coding agent running in the Codex CLI tool, a terminal-based coding assistant."
+	if out != want {
+		t.Fatalf("got %q want %q", out, want)
+	}
+}
+
+func TestRewriteSystemInPlace_TopLevelSystemString(t *testing.T) {
+	feedback := "  - To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues"
+	obj := map[string]any{
+		"model":  "deepseek-v4.1-flash-sg",
+		"system": feedback,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	}
+	changed := rewriteSystemInPlace(obj)
+	if !changed {
+		t.Fatal("should mark changed for top-level system")
+	}
+	sys, ok := obj["system"].(string)
+	if !ok || strings.Contains(sys, "https://github.com/anthropics/claude-code/issues") {
+		t.Fatalf("top-level system not sanitized: %v", obj["system"])
+	}
+}
+
+func TestRewriteSystemInPlace_TopLevelSystemArray(t *testing.T) {
+	feedback := "  - To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues"
+	obj := map[string]any{
+		"model": "deepseek-v4.1-flash-sg",
+		"system": []any{
+			map[string]any{"type": "text", "text": feedback},
+		},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	}
+	changed := rewriteSystemInPlace(obj)
+	if !changed {
+		t.Fatal("should mark changed for top-level system array")
+	}
+	parts, ok := obj["system"].([]any)
+	if !ok || len(parts) == 0 {
+		t.Fatalf("system is not []any: %v", obj["system"])
+	}
+	part0 := parts[0].(map[string]any)
+	text := part0["text"].(string)
+	if strings.Contains(text, "https://github.com/anthropics/claude-code/issues") {
+		t.Fatalf("top-level system array block not sanitized: %v", text)
+	}
+}
+
+func TestRewriteSystemInPlace_InstructionsAndGemini(t *testing.T) {
+	feedback := "  - To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues"
+	obj := map[string]any{
+		"instructions": feedback,
+		"system_instruction": map[string]any{
+			"parts": []any{
+				map[string]any{"text": feedback},
+			},
+		},
+	}
+	changed := rewriteSystemInPlace(obj)
+	if !changed {
+		t.Fatal("should mark changed")
+	}
+	if strings.Contains(obj["instructions"].(string), "https://github.com/anthropics/claude-code/issues") {
+		t.Fatalf("instructions not sanitized: %v", obj["instructions"])
+	}
+	si := obj["system_instruction"].(map[string]any)["parts"].([]any)[0].(map[string]any)["text"].(string)
+	if strings.Contains(si, "https://github.com/anthropics/claude-code/issues") {
+		t.Fatalf("system_instruction not sanitized: %v", si)
+	}
+}
+
+func TestRewriteSystemInPlace_ToolCallsAndReasoning(t *testing.T) {
+	feedback := "  - To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues"
+	obj := map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role":              "assistant",
+				"reasoning_content": feedback,
+				"reasoning":         feedback,
+				"tool_calls": []any{
+					map[string]any{
+						"function": map[string]any{
+							"name":      "view",
+							"arguments": feedback,
+						},
+					},
+				},
+			},
+		},
+	}
+	changed := rewriteSystemInPlace(obj)
+	if !changed {
+		t.Fatal("should mark changed")
+	}
+	msg := obj["messages"].([]any)[0].(map[string]any)
+	if strings.Contains(msg["reasoning_content"].(string), "https://github.com/anthropics/claude-code/issues") {
+		t.Fatal("reasoning_content not sanitized")
+	}
+	if strings.Contains(msg["reasoning"].(string), "https://github.com/anthropics/claude-code/issues") {
+		t.Fatal("reasoning not sanitized")
+	}
+	tc := msg["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)["arguments"].(string)
+	if strings.Contains(tc, "https://github.com/anthropics/claude-code/issues") {
+		t.Fatal("tool_calls arguments not sanitized")
+	}
+}
+
+func TestRewriteSystemForUpstream_TopLevelSystem(t *testing.T) {
+	in := []byte(`{"system":"  - To give feedback, users should report the issue at https://github.com/anthropics/claude-code/issues","messages":[{"role":"user","content":"hi"}]}`)
+	out := rewriteSystemForUpstream(in)
+	if strings.Contains(string(out), "https://github.com/anthropics/claude-code/issues") {
+		t.Fatalf("feedback survived: %s", string(out))
+	}
+}
+
 func TestSanitizeBlockedTemplates_NoMatch(t *testing.T) {
 	in := "Hello world"
 	out := sanitizeBlockedTemplates(in)

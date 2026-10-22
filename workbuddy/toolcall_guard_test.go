@@ -14,9 +14,8 @@ import (
 func captureGuardLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	buf := &bytes.Buffer{}
-	prev := guardLogWriter
 	guardLogWriter = buf
-	t.Cleanup(func() { guardLogWriter = prev })
+	t.Cleanup(func() { guardLogWriter = os.Stderr })
 	return buf
 }
 
