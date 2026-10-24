@@ -17,7 +17,7 @@ language follows the browser's language.
 > — this README, the store listing, the plugin metadata, the panel, the release title — says
 > **CodeBuddy Intl CPA**.
 
-> **Status:** runs in production. 36 Go files (~15.4k lines) plus 50 test files, and a
+> **Status:** runs in production. 36 Go files (~15.4k lines) plus 51 test files, and a
 > 3,224-line management panel embedded with `go:embed`.
 
 ---
