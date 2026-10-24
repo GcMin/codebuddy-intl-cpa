@@ -19,8 +19,10 @@ import (
 // It is a var (not const) so tests can override it with an httptest server.
 var billingBase = "https://www.codebuddy.cn"
 
-// billingBaseGlobal is the international (www.workbuddy.ai) billing base.
-var billingBaseGlobal = "https://www.codebuddy.ai"
+// billingBaseGlobal is the international billing base. It follows the same
+// WB_UPSTREAM_GLOBAL override as the chat/auth base: a region where
+// codebuddy.ai is DNS-blackholed still needs credits and check-in to work.
+var billingBaseGlobal = upstreamBaseGlobal
 
 // If the panel later wants to surface "usage export ready", re-add it and wire
 // it into buildDashboardEx's response.

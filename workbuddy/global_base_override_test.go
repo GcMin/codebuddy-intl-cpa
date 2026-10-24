@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"os/exec"
+	"testing"
+)
 
 // GH #14: a region where www.codebuddy.ai is DNS-blackholed can move the whole
 // Global surface to the realm's other host without touching the credential.
@@ -43,5 +47,32 @@ func TestGlobalBaseDerivatives(t *testing.T) {
 	}
 	if mmUpstreamBaseGlobal != upstreamBaseGlobal {
 		t.Fatalf("mmUpstreamBaseGlobal = %q, want %q", mmUpstreamBaseGlobal, upstreamBaseGlobal)
+	}
+}
+
+// The override is read at package init, so it can only be observed in a fresh
+// process. The child also guards every derived base: a missed initializer
+// (billingBaseGlobal did, until 0.10.0) silently leaves one surface on the
+// dead host while the changelog claims otherwise.
+func TestGlobalBaseOverrideAtInit(t *testing.T) {
+	const override = "https://www.workbuddy.ai"
+	if os.Getenv("WB_INIT_CHILD") == "1" {
+		for name, got := range map[string]string{
+			"upstreamBaseGlobal":   upstreamBaseGlobal,
+			"originRefererGlobal":  originRefererGlobal,
+			"billingBaseGlobal":    billingBaseGlobal,
+			"loginBaseGlobal":      loginBaseGlobal,
+			"mmUpstreamBaseGlobal": mmUpstreamBaseGlobal,
+		} {
+			if got != override {
+				t.Fatalf("%s = %q at init, want %q", name, got, override)
+			}
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestGlobalBaseOverrideAtInit$")
+	cmd.Env = append(os.Environ(), "WB_INIT_CHILD=1", "WB_UPSTREAM_GLOBAL="+override)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("init override not applied: %v\n%s", err, out)
 	}
 }
