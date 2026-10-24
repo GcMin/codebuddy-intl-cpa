@@ -13,8 +13,9 @@
   working and no re-login is needed (verified against the live gateway:
   billing and chat answered 200 on both hosts with the same Global token).
 - The override covers the chat base, OAuth state/poll, token refresh, model
-  discovery and the billing/check-in base. A value that is not an `http(s)://`
-  URL is ignored with a warning, so a typo cannot silently break Global.
+  discovery and the billing/check-in base. Only an `http(s)` **base URL** is
+  accepted (no path, query or embedded credentials); anything else is ignored
+  with a warning, so a typo or a pasted `/v2` URL cannot silently break Global.
 
 ## 0.9.9
 

@@ -22,6 +22,10 @@ func TestResolveGlobalBase(t *testing.T) {
 		{"no scheme", "www.workbuddy.ai", defaultUpstreamBaseGlobal},
 		{"bad scheme", "ftp://www.workbuddy.ai", defaultUpstreamBaseGlobal},
 		{"garbage", "://nope", defaultUpstreamBaseGlobal},
+		{"path is rejected", "https://www.workbuddy.ai/v2", defaultUpstreamBaseGlobal},
+		{"query is rejected", "https://www.workbuddy.ai/?x=1", defaultUpstreamBaseGlobal},
+		{"credentials are rejected", "https://user:pass@www.workbuddy.ai", defaultUpstreamBaseGlobal},
+		{"uppercase scheme", "HTTPS://www.workbuddy.ai", "https://www.workbuddy.ai"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

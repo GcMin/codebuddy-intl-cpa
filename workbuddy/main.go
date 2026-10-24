@@ -127,19 +127,27 @@ var (
 )
 
 // resolveGlobalBase returns the Intl gateway base, honouring
-// WB_UPSTREAM_GLOBAL when it is an http(s) URL. Invalid values are ignored with
-// a warning so a typo cannot silently break every Global request.
+// WB_UPSTREAM_GLOBAL when it is an http(s) base URL. Invalid values (bad
+// scheme, path, query, embedded credentials) are ignored with a warning so a
+// typo cannot silently break every Global request.
 func resolveGlobalBase() string {
 	raw := strings.TrimSpace(os.Getenv("WB_UPSTREAM_GLOBAL"))
 	if raw == "" {
 		return defaultUpstreamBaseGlobal
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		fmt.Fprintf(os.Stderr, "[workbuddy] WB_UPSTREAM_GLOBAL ignored (want http(s)://host): %q\n", raw)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "[workbuddy] WB_UPSTREAM_GLOBAL ignored: want an http(s) base URL with no path, query or credentials")
 		return defaultUpstreamBaseGlobal
 	}
-	return strings.TrimRight(raw, "/")
+	scheme := strings.ToLower(u.Scheme)
+	if u.Host == "" || (scheme != "https" && scheme != "http") ||
+		u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		// Never echo the value: a pasted URL can carry credentials.
+		fmt.Fprintln(os.Stderr, "[workbuddy] WB_UPSTREAM_GLOBAL ignored: want an http(s) base URL with no path, query or credentials")
+		return defaultUpstreamBaseGlobal
+	}
+	return scheme + "://" + u.Host
 }
 
 // loginCtx holds the cookie-affined HTTP client for one in-flight login flow.
