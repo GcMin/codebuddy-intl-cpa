@@ -132,6 +132,15 @@ the prompt cache is not bounced back. The affinity key is a digest of client cre
 stable conversation identity + model + realm. Bindings are capped, expire after an hour,
 and persist to `session-affinity.json` so a restart does not move a conversation.
 
+Clients that rebuild their current state on each request can supply a stable
+`X-Session-ID` (`Session-Id` is also accepted). When a client identity is present,
+the same client/model/realm/session namespace also determines the upstream
+`X-Conversation-ID` across non-streaming, synchronous-streaming and asynchronous
+paths. Raw credentials and session names are not forwarded. Without an explicit
+session header or client identity, the existing system-plus-first-user CID
+algorithm remains unchanged. Request bodies, admission, retries and quotas are
+unchanged.
+
 Routing is always per session: **there is no panel-selected active account**, because one
 global choice leaked across conversations and forced a prompt-cache re-write on models that
 do not share cache across accounts.
@@ -154,6 +163,15 @@ output / cached tokens, and the upstream `credit` value taken from the terminal 
 Stored append-only as JSONL next to the auth store, with rotation at ~50 MB
 (`request-usage-<YYYY-MM>.jsonl`, older data retained). Powers the **Usage CodeBuddy**
 panel section. No credentials are ever written.
+
+New rows include `cache_write_status`: `reported` for a non-negative integer
+(including an explicit zero), `missing` when no upstream write field exists, or
+`invalid` for an invalid value. Both `prompt_cache_write_tokens` and
+`cache_creation_tokens` are recognized; misses are never inferred to be writes.
+The existing numeric field remains compatible. The panel distinguishes these
+states; old zero rows show an unknown legacy value, and old positive values keep
+their number with an unmarked-legacy label. Historical JSONL is not rewritten.
+This metadata does not alter credits, token totals or the existing usage publisher.
 
 This is also what made the cache economics visible: a 24k-token request with a full cache
 hit bills ~0.05 credit instead of ~0.62.

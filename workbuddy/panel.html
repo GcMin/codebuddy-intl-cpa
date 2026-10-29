@@ -256,6 +256,7 @@ button .spin{border-color:var(--on-acc);border-top-color:transparent}
 .utbl .muted{color:var(--mut);font-size:11px}
 .usage-meta{color:var(--mut);font-size:11px;margin-top:8px}
 .usage-loading{color:var(--mut);text-align:center;padding:22px}
+.utbl .cache-tokens{display:block;white-space:normal;overflow-wrap:anywhere}
 .cache-trace{font-size:11px;text-align:left;min-width:110px;margin-top:5px}
 .cache-trace summary{cursor:pointer;color:var(--acc)}
 .cache-trace pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:480px;max-height:320px;overflow:auto;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;user-select:text}
@@ -1151,6 +1152,8 @@ const PANEL_ZH_NOTICES={
   "Long-context notice: above 272K input tokens, credits are 2×. Display only; does not change billing or the advertised API context limit.":"长上下文提示：输入超过 272K token 时积分为 2 倍。仅展示，不修改计费或 API 公布的上下文上限。",
   ">272K input: credits 2×":"输入 >272K：积分 2×",
   "Cache hash":"缓存哈希","low hit":"低命中","hash tracing off":"哈希追踪未开启",
+  "write not reported":"写入未提供","invalid write value":"写入值无效",
+  "unknown legacy write":"写入未知（旧记录）","unmarked legacy write":"旧记录未标记",
   "Request ID":"请求 ID","Cache hit":"缓存命中","Body bytes / messages":"请求字节 / 消息数",
   "Attempt":"尝试","Previous same-session request":"同会话上一请求","Account changed":"账号切换",
   "yes":"是","no":"否","Changed fields":"变化字段","none":"无","Identical leading messages":"相同前缀消息数",
@@ -2334,6 +2337,12 @@ let usageKeyOk=null;
 
 function fmtCred(v){const n=Number(v)||0;return n?""+Math.round(n*1000)/1000:"0"}
 function fmtTok(n){const v=Number(n)||0;return v>=1e6?(Math.round(v/1e4)/100)+"M":v>=1000?(Math.round(v/100)/10)+"K":""+v}
+function usageWriteTokens(r){
+  if(r.cache_write_status==="reported")return fmtTok(r.cache_write_tokens);
+  if(r.cache_write_status==="missing")return esc(tr("write not reported"));
+  if(r.cache_write_status==="invalid")return esc(tr("invalid write value"));
+  return Number(r.cache_write_tokens)>0?fmtTok(r.cache_write_tokens)+" · "+esc(tr("unmarked legacy write")):esc(tr("unknown legacy write"));
+}
 function fmtDT(s){
   try{
     const d=new Date(s);
@@ -2451,7 +2460,7 @@ function renderUsageData(d){
         tbody.innerHTML=recs.map(r=>{
           const fail=r.failed?tr("<span class=\"badge exhausted\" style=\"margin-left:6px\">失败</span>"):"";
           const model=esc(r.model||"")+(r.alias&&r.alias!==r.model?` <span class="muted">(${esc(r.alias)})</span>`:"");
-          return `<tr><td>${esc(fmtDT(r.timestamp))}</td><td>${esc(r.nickname||r.auth_index||"-")}${fail}</td><td>${model}</td><td class="num">${fmtTok(r.input_tokens)}</td><td class="num">${fmtTok(r.output_tokens)}</td><td class="num">${fmtTok(r.cache_read_tokens)} / ${fmtTok(r.cache_write_tokens)}${usageCacheTraceCell(r,recs)}</td><td class="num">${fmtTok(r.total_tokens)}</td><td class="num cr">${fmtCred(r.credit)}</td></tr>`;
+          return `<tr><td>${esc(fmtDT(r.timestamp))}</td><td>${esc(r.nickname||r.auth_index||"-")}${fail}</td><td>${model}</td><td class="num">${fmtTok(r.input_tokens)}</td><td class="num">${fmtTok(r.output_tokens)}</td><td class="num"><span class="cache-tokens">${fmtTok(r.cache_read_tokens)} / ${usageWriteTokens(r)}</span>${usageCacheTraceCell(r,recs)}</td><td class="num">${fmtTok(r.total_tokens)}</td><td class="num cr">${fmtCred(r.credit)}</td></tr>`;
         }).join("");
       }
     }

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,19 +32,21 @@ import (
 // requestUsageRecord is one JSONL line: metadata of a single request.
 // Timestamp is RFC3339 UTC.
 type requestUsageRecord struct {
-	Timestamp        string             `json:"timestamp"`
-	AuthIndex        string             `json:"auth_index"`
-	AuthID           string             `json:"auth_id,omitempty"`
-	AuthUID          string             `json:"auth_uid,omitempty"` // account UID; stable across auth file re-import (CB-055)
-	Nickname         string             `json:"nickname,omitempty"`
-	Region           string             `json:"region,omitempty"` // global | cn
-	Model            string             `json:"model"`            // upstream model
-	Alias            string             `json:"alias,omitempty"`  // requested alias when different
-	InputTokens      int64              `json:"input_tokens"`
-	OutputTokens     int64              `json:"output_tokens"`
-	ReasoningTokens  int64              `json:"reasoning_tokens"`
-	CacheReadTokens  int64              `json:"cache_read_tokens"`  // = hit
-	CacheWriteTokens int64              `json:"cache_write_tokens"` // = write
+	Timestamp        string `json:"timestamp"`
+	AuthIndex        string `json:"auth_index"`
+	AuthID           string `json:"auth_id,omitempty"`
+	AuthUID          string `json:"auth_uid,omitempty"` // account UID; stable across auth file re-import (CB-055)
+	Nickname         string `json:"nickname,omitempty"`
+	Region           string `json:"region,omitempty"` // global | cn
+	Model            string `json:"model"`            // upstream model
+	Alias            string `json:"alias,omitempty"`  // requested alias when different
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	ReasoningTokens  int64  `json:"reasoning_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`  // = hit
+	CacheWriteTokens int64  `json:"cache_write_tokens"` // = write
+	// Empty on legacy rows: their zero cannot distinguish missing from reported.
+	CacheWriteStatus string             `json:"cache_write_status,omitempty"`
 	TotalTokens      int64              `json:"total_tokens"`
 	Credit           float64            `json:"credit"` // upstream credit from final chunk (0 = free/under-threshold/length-cut; never estimated)
 	Failed           bool               `json:"failed"`
@@ -491,6 +494,41 @@ func usageMapFromCompletion(payload []byte) map[string]any {
 	return m
 }
 
+// cacheWriteReport distinguishes an absent field from a reported zero.
+func cacheWriteReport(m map[string]any) (int64, string) {
+	for _, key := range []string{"prompt_cache_write_tokens", "cache_creation_tokens"} {
+		v, present := m[key]
+		if !present {
+			continue
+		}
+		var value int64
+		switch n := v.(type) {
+		case float64:
+			if math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n >= float64(math.MaxInt64) || math.Trunc(n) != n {
+				return 0, "invalid"
+			}
+			value = int64(n)
+		case int64:
+			value = n
+		case int:
+			value = int64(n)
+		case json.Number:
+			var err error
+			value, err = n.Int64()
+			if err != nil {
+				return 0, "invalid"
+			}
+		default:
+			return 0, "invalid"
+		}
+		if value < 0 {
+			return 0, "invalid"
+		}
+		return value, "reported"
+	}
+	return 0, "missing"
+}
+
 // usagePartsFromMap extracts tokens (incl. cache write) + credit in one pass.
 // usage.go / publishUsage stay untouched — this is record-only.
 func usagePartsFromMap(m map[string]any) (usage.Detail, float64) {
@@ -513,13 +551,14 @@ func usagePartsFromMap(m map[string]any) (usage.Detail, float64) {
 		}
 		return 0
 	}
+	write, _ := cacheWriteReport(m)
 	d := usage.Detail{
 		InputTokens:         num("prompt_tokens", "input_tokens"),
 		OutputTokens:        num("completion_tokens", "output_tokens"),
 		TotalTokens:         num("total_tokens"),
 		CachedTokens:        num("cached_tokens"),
 		CacheReadTokens:     num("prompt_cache_hit_tokens", "cache_read_input_tokens"),
-		CacheCreationTokens: num("prompt_cache_write_tokens", "cache_creation_tokens"),
+		CacheCreationTokens: write,
 	}
 	if ct, ok := m["completion_tokens_details"].(map[string]any); ok {
 		if v, ok2 := ct["reasoning_tokens"].(float64); ok2 {
@@ -723,6 +762,7 @@ func recordUsageMap(requestedModel, upstreamModel, authID, authUID string, start
 	}
 	detail, credit := usagePartsFromMap(m)
 	record := buildUsageRecord(requestedModel, upstreamModel, authID, authUID, started, detail, credit, failed)
+	_, record.CacheWriteStatus = cacheWriteReport(m)
 	record.CacheTrace = firstCacheTrace(traces)
 	usageStore.record(record)
 	if record.CacheTrace != nil {
