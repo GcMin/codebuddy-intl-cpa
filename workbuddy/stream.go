@@ -94,12 +94,13 @@ func pumpWithFailover(ctx context.Context, cancel context.CancelFunc, req execut
 	if sa, err := parseStored(req.StorageJSON); err == nil {
 		realm = accountRegion(sa)
 	}
+	cid := explicitConversationID(req.ExecutorRequest, body, realm)
 	fin := runStreamFailoverForSession(cands, requestSessionKey(req.ExecutorRequest, body, realm), func(cand *failoverCandidate) (bool, int, error) {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointChatFor(cand.Auth), bytes.NewReader(body))
 		if err != nil {
 			return false, 0, err
 		}
-		backendHeaders(httpReq, cand.Auth)
+		backendHeaders(httpReq, cand.Auth, cid)
 		trace.beginAttempt(httpReq, cand.AuthID)
 		return pumpAttempt(httpReq, streamID, sseFramed, req.Model, upstreamModel, cand.AuthID, candUID(cand, authUID), started, collector, trace)
 	}, ctx)

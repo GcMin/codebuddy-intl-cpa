@@ -49,11 +49,11 @@ func TestProgressOnlyStreamsFailAllExecutorPaths(t *testing.T) {
 		run  func() error
 	}{
 		{"non-stream", func() error {
-			_, err := upstreamAttempt(context.Background(), []byte(`{}`), "fixture", cand)
+			_, err := upstreamAttempt(context.Background(), []byte(`{}`), "fixture", cand, "")
 			return err
 		}},
 		{"collected-stream", func() error {
-			_, _, err := collectStreamAttempt([]byte(`{}`), cand, true, &sseUsageCollector{})
+			_, _, err := collectStreamAttempt([]byte(`{}`), cand, true, &sseUsageCollector{}, "")
 			return err
 		}},
 		{"async-stream", func() error {

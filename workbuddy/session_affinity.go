@@ -186,6 +186,21 @@ func requestSessionKey(req pluginapi.ExecutorRequest, upstreamBody []byte, realm
 	return hex.EncodeToString(digest[:])
 }
 
+// Only an explicit session header opts into the new upstream identity. Legacy
+// callers keep stableConversationID(body), including its existing cache entries.
+// Reuse the client/model/realm namespace used by account affinity; never forward
+// a raw client credential or allow two clients' session names to share a CID.
+func explicitConversationID(req pluginapi.ExecutorRequest, upstreamBody []byte, realm string) string {
+	if strings.TrimSpace(req.Headers.Get("X-Session-ID")) == "" && strings.TrimSpace(req.Headers.Get("Session-Id")) == "" {
+		return ""
+	}
+	key := requestSessionKey(req, upstreamBody, realm)
+	if key == "" {
+		return ""
+	}
+	return key[:32]
+}
+
 func (s *sessionBindingStore) preferred(key string, candidates []*failoverCandidate) []*failoverCandidate {
 	if key == "" || len(candidates) < 2 {
 		return candidates

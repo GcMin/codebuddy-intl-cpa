@@ -643,13 +643,10 @@ func parseStored(raw []byte) (*storedAuth, error) {
 // HTTP plumbing
 // -------------------------------------------------------------------------------
 
-// stableConversationID derives a stable per-conversation ID from the request
-// body prefix (system + first user message). CodeBuddy caches prompt KV-cache
-// per X-Conversation-ID; random IDs force cache write on every request.
-// Mirror of the SRouter/InferHub session scheme: hash ONLY the conversation
-// prefix (system + first user text), NOT the whole body — the body grows on
-// every turn, so hashing it would rotate the conversation id each turn and
-// defeat the cache for multi-turn coding-agent sessions.
+// stableConversationID preserves the legacy system + first-user identity for
+// callers without an explicit session. It stays stable for appended turns,
+// but not for clients that rebuild their first user message on every request.
+// Explicit sessions instead use the client/model/realm-scoped identity.
 func stableConversationID(body []byte) string {
 	var req struct {
 		Messages []struct {
@@ -731,7 +728,7 @@ func endpointModelsFor(sa *storedAuth) string {
 
 // backendHeaders applies auth-derived headers to a chat completion request.
 // Empty fields are signalled via the X-No-* convention used by CodeBuddy.
-func backendHeaders(req *http.Request, sa *storedAuth) {
+func backendHeaders(req *http.Request, sa *storedAuth, conversationIDs ...string) {
 	commonHeaders(req)
 	if sa.Auth.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+sa.Auth.AccessToken)
@@ -762,12 +759,11 @@ func backendHeaders(req *http.Request, sa *storedAuth) {
 	// optional device token. See client_identity.go for why this matters (11128).
 	applyIdentityHeaders(req, sa)
 
-	// Stable conversation ID enables CodeBuddy prompt cache (KV cache hit).
-	// Random per-request IDs cause cache write on every request and zero reads.
-	// Derive from request body prefix; per-request sub-IDs stay random, and the
-	// tracing family is stamped alongside it.
-	cid := ""
-	if req.Body != nil {
+	// An explicit CID is already scoped to client/model/realm. Otherwise keep
+	// the legacy body-prefix derivation. Per-request tracing IDs remain random;
+	// actual cache reuse is still determined by the upstream model/backend.
+	cid := firstNonEmpty(conversationIDs...)
+	if cid == "" && req.Body != nil {
 		if b, err := io.ReadAll(req.Body); err == nil && len(b) > 0 {
 			cid = stableConversationID(b)
 			req.Body = io.NopCloser(bytes.NewReader(b))
@@ -907,6 +903,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	// ensureSystemMessage + rewriteModel in ONE unmarshal/marshal pass.
 	body := prepareUpstreamBody(req.Payload, req.OriginalRequest, sa, upstreamModel)
 	trace := newCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+	cid := explicitConversationID(req, body, accountRegion(sa))
 
 	// Failover (v0.8.8): when the routed account answers 429 / code 6004, the
 	// same request is retried on the next eligible enabled account. One usage
@@ -915,7 +912,7 @@ func handleExecExecute(raw []byte) ([]byte, error) {
 	cands := pool.ordered(req.StorageJSON)
 	var completion []byte
 	fin := runFailoverForSession(cands, requestSessionKey(req, body, accountRegion(sa)), func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
-		out, err := upstreamAttempt(context.Background(), body, req.Model, cand, trace)
+		out, err := upstreamAttempt(context.Background(), body, req.Model, cand, cid, trace)
 		completion = out // nil on error
 		return classifyNonStream(out, err)
 	})
@@ -978,6 +975,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 	// Single-pass JSON rewrite (see handleExecExecute for the non-stream path).
 	body := prepareUpstreamBody(req.Payload, req.OriginalRequest, sa, upstreamModel)
 	trace := newCacheTrace(req.Payload, req.OriginalRequest, body, req.Metadata, started)
+	cid := explicitConversationID(req.ExecutorRequest, body, accountRegion(sa))
 
 	headers := streamHeaders()
 	sseFramed := clientNeedsSSEFrame(req.Metadata)
@@ -991,7 +989,7 @@ func handleExecStream(raw []byte) ([]byte, error) {
 		fin := runFailoverForSession(cands, requestSessionKey(req.ExecutorRequest, body, accountRegion(sa)), func(cand *failoverCandidate) (attemptOutcome, int, string, error) {
 			var statusCode int
 			var err error
-			chunks, statusCode, err = collectStreamAttempt(body, cand, sseFramed, collector, trace)
+			chunks, statusCode, err = collectStreamAttempt(body, cand, sseFramed, collector, cid, trace)
 			if err != nil {
 				if len(chunks) > 0 {
 					// Partial data already collected — the sync path returns it
@@ -1056,12 +1054,12 @@ func handleExecStream(raw []byte) ([]byte, error) {
 // collectStreamAttempt runs one synchronous upstream stream attempt against
 // cand, cleaning chunks through the collector. Mirrors the legacy
 // collectUpstreamStream body, parameterized by candidate.
-func collectStreamAttempt(body []byte, cand *failoverCandidate, sseFramed bool, collector *sseUsageCollector, traces ...*requestCacheTrace) ([]pluginapi.ExecutorStreamChunk, int, error) {
+func collectStreamAttempt(body []byte, cand *failoverCandidate, sseFramed bool, collector *sseUsageCollector, cid string, traces ...*requestCacheTrace) ([]pluginapi.ExecutorStreamChunk, int, error) {
 	httpReq, err := http.NewRequest(http.MethodPost, endpointChatFor(cand.Auth), bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}
-	backendHeaders(httpReq, cand.Auth)
+	backendHeaders(httpReq, cand.Auth, cid)
 	trace := firstCacheTrace(traces)
 	attempt := trace.beginAttempt(httpReq, cand.AuthID)
 	// Compliance: route via host.http.do_stream so request-log captures the call.

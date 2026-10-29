@@ -40,11 +40,11 @@ func TestExecutorUpstreamErrorsPreserveHTTPStatus(t *testing.T) {
 		run  func() error
 	}{
 		{"non-stream", func() error {
-			_, err := upstreamAttempt(context.Background(), payload, "deepseek-v4.1-flash", cand)
+			_, err := upstreamAttempt(context.Background(), payload, "deepseek-v4.1-flash", cand, "")
 			return err
 		}},
 		{"collected-stream", func() error {
-			_, _, err := collectStreamAttempt(payload, cand, true, &sseUsageCollector{})
+			_, _, err := collectStreamAttempt(payload, cand, true, &sseUsageCollector{}, "")
 			return err
 		}},
 		{"async-stream", func() error {
